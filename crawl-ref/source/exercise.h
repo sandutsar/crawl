@@ -1,7 +1,7 @@
 /**
  * @file
  * @brief Collects all calls to skills.cc:exercise for
- *            easier changes to the training modell.
+ *            easier changes to the training model.
 **/
 
 #pragma once
@@ -17,7 +17,6 @@ void practise_stabbing();
 void practise_using_ability(ability_type abil);
 void practise_casting(spell_type spell, bool success);
 void practise_evoking(int degree = 1);
-void practise_using_deck();
 
 void practise_being_hit();
 void practise_being_attacked();

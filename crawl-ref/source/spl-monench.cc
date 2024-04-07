@@ -8,9 +8,13 @@
 
 #include "spl-monench.h"
 
+#include "coordit.h"
+#include "english.h" // apostrophise
 #include "env.h"
+#include "losglobal.h"
 #include "message.h"
 #include "spl-util.h"
+#include "stringutil.h" // make_stringf
 #include "terrain.h"
 
 int englaciate(coord_def where, int pow, actor *agent)
@@ -35,7 +39,8 @@ int englaciate(coord_def where, int pow, actor *agent)
         return 0;
     }
 
-    int duration = roll_dice(3, pow) / 6 - victim->get_hit_dice() / 2;
+    int duration = div_rand_round(roll_dice(3, 1 + pow), 6)
+                    - div_rand_round(victim->get_hit_dice() - 1, 2);
 
     if (duration <= 0)
     {
@@ -110,4 +115,89 @@ bool do_slow_monster(monster& mon, const actor* agent, int dur)
     }
 
     return false;
+}
+
+bool enfeeble_monster(monster &mon, int pow)
+{
+    const int res_margin = mon.check_willpower(&you, pow);
+    vector<enchant_type> hexes;
+
+    if (mons_has_attacks(mon))
+        hexes.push_back(ENCH_WEAK);
+    if (mon.antimagic_susceptible())
+        hexes.push_back(ENCH_ANTIMAGIC);
+    if (res_margin <= 0)
+    {
+        if (mons_can_be_blinded(mon.type))
+            hexes.push_back(ENCH_BLIND);
+        hexes.push_back(ENCH_DAZED);
+    }
+
+    // Resisted the upgraded effects, and immune to the irresistible effects.
+    if (hexes.empty())
+    {
+        return simple_monster_message(mon,
+                   mon.resist_margin_phrase(res_margin).c_str());
+    }
+
+    const int max_extra_dur = div_rand_round(pow, 40);
+    const int dur = 5 + random2avg(max_extra_dur, 3);
+
+    for (auto hex : hexes)
+    {
+        if (mon.has_ench(hex))
+        {
+            mon_enchant ench = mon.get_ench(hex);
+            ench.duration = max(dur * BASELINE_DELAY, ench.duration);
+            mon.update_ench(ench);
+        }
+        else
+            mon.add_ench(mon_enchant(hex, 0, &you, dur * BASELINE_DELAY));
+    }
+
+    if (res_margin > 0)
+        simple_monster_message(mon, " partially resists.");
+
+    return simple_monster_message(mon, " is enfeebled!");
+}
+
+spret cast_vile_clutch(int pow, bolt &beam, bool fail)
+{
+    spret result = zapping(ZAP_VILE_CLUTCH, pow, beam, true, nullptr, fail);
+
+    if (result == spret::success)
+        you.props[VILE_CLUTCH_POWER_KEY].get_int() = pow;
+
+    return result;
+}
+
+bool start_ranged_constriction(actor& caster, actor& target, int duration,
+                               constrict_type type)
+{
+    if (!caster.can_constrict(target, type))
+        return false;
+
+    if (target.is_player())
+    {
+        if (type == CONSTRICT_ROOTS)
+        {
+            you.increase_duration(DUR_GRASPING_ROOTS, duration);
+            mprf(MSGCH_WARN, "The grasping roots grab you!");
+        }
+        else if (type == CONSTRICT_BVC)
+        {
+            you.increase_duration(DUR_VILE_CLUTCH, duration);
+            mprf(MSGCH_WARN, "Zombie hands grab you from below!");
+        }
+        caster.start_constricting(you);
+    }
+    else
+    {
+        enchant_type etype = (type == CONSTRICT_ROOTS ? ENCH_GRASPING_ROOTS
+                                                      : ENCH_VILE_CLUTCH);
+        auto ench = mon_enchant(etype, 0, &caster, duration * BASELINE_DELAY);
+        target.as_monster()->add_ench(ench);
+    }
+
+    return true;
 }

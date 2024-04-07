@@ -45,6 +45,7 @@ enum msg_channel_type
     MSGCH_HELL_EFFECT,      // hell effects
     MSGCH_MONSTER_WARNING,  // "Foo comes into view", et al
     MSGCH_DGL_MESSAGE,      // dgamelaunch messages
+    MSGCH_DECOR_FLAVOUR,    // Flavour messages for walking on some features
 
     NUM_MESSAGE_CHANNELS    // always last
 };
@@ -100,12 +101,11 @@ void do_message_print(msg_channel_type channel, int param, bool cap,
                              bool nojoin, const char *format, va_list argp);
 
 void mpr(const string &text);
+// static inline void mpr(const char *text) { mpr(string(text)); }
 void mpr_nojoin(msg_channel_type channel, string text);
 
-static inline void mpr(const formatted_string &text)
-{
-    mpr(text.to_colour_string());
-}
+// prevent implicit cast from formatted_string, use formatted_mpr instead
+void mpr(const formatted_string &) = delete;
 
 // 4.1-style mpr, currently named mprf for minimal disruption.
 void mprf(msg_channel_type channel, int param, PRINTF(2, ));

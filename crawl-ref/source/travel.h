@@ -62,8 +62,15 @@ uint8_t is_waypoint(const coord_def &p);
 command_type direction_to_command(int x, int y);
 bool is_resting();
 void explore_pickup_event(int did_pickup, int tried_pickup);
-bool feat_is_traversable_now(dungeon_feature_type feat, bool try_fallback = false);
+bool feat_is_traversable_now(dungeon_feature_type feat,
+                             bool try_fallback = false,
+                             bool assume_flight = false);
 bool feat_is_traversable(dungeon_feature_type feat, bool try_fallback = false);
+bool is_travelsafe_square(const coord_def& c,
+                                  bool ignore_hostile = false,
+                                  bool ignore_danger = false,
+                                  bool try_fallback = false);
+
 bool is_known_branch_id(branch_type branch);
 bool is_unknown_stair(const coord_def &p);
 bool is_unknown_transporter(const coord_def &p);
@@ -96,7 +103,8 @@ void start_travel(const coord_def& p);
 
 command_type travel();
 
-void prevent_travel_to(const string &dungeon_feature_name);
+int prevent_travel_to(const string &dungeon_feature_name);
+void reset_travel_terrain();
 
 // Sort dungeon features as appropriate.
 int level_distance(level_id first, level_id second);
@@ -182,7 +190,7 @@ enum explore_stop_type
     ES_GREEDY_VISITED_ITEM_STACK = 0x00040,
 
     // Explored into view of a stair, shop, altar, portal, glowing
-    // item, artefact, or branch entrance.
+    // item, artefact, or branch entrance.... etc.
     ES_STAIR                     = 0x00080,
     ES_SHOP                      = 0x00100,
     ES_ALTAR                     = 0x00200,
@@ -193,6 +201,7 @@ enum explore_stop_type
     ES_BRANCH                    = 0x04000,
     ES_RUNED_DOOR                = 0x08000,
     ES_TRANSPORTER               = 0x10000,
+    ES_RUNELIGHT                 = 0x20000,
 };
 
 ////////////////////////////////////////////////////////////////////////////
@@ -236,6 +245,7 @@ private:
     vector< named_thing<int> > altars;
     vector< named_thing<int> > runed_doors;
     vector< named_thing<int> > transporters;
+    vector< named_thing<int> > runelights;
 
     vector<string> marker_msgs;
     vector<string> marked_feats;
@@ -406,7 +416,7 @@ private:
     void resize_stair_distances();
 };
 
-const int TRAVEL_WAYPOINT_COUNT = 10;
+const int TRAVEL_WAYPOINT_COUNT = 100;
 // Tracks all levels that the player has seen.
 class TravelCache
 {
@@ -452,8 +462,11 @@ public:
     void set_waypoint(int waynum, int x, int y);
     void delete_waypoint();
     uint8_t is_waypoint(const level_pos &lp) const;
+    vector<string> get_waypoint_descs() const;
     void list_waypoints() const;
+    void flush_invalid_waypoints();
     void update_waypoints() const;
+    bool is_valid_waypoint(int waynum) const;
 
     void update_excludes();
     void update();

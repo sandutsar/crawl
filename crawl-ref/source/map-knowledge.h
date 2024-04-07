@@ -26,7 +26,7 @@ void update_cloud_knowledge();
  * @param clear_mons
  *  Clear monster knowledge?
  */
-void clear_map(bool clear_items = true, bool clear_mons = true);
+void clear_map(bool clear_items = false, bool clear_mons = true);
 
 /**
  * @brief If a travel trail exists, clear it; otherwise clear the map.
@@ -49,3 +49,4 @@ void reautomap_level();
  * @return pair of {topleft coord, bottomright coord} of bbox.
  */
 std::pair<coord_def, coord_def> known_map_bounds();
+bool in_known_map_bounds(const coord_def& p);

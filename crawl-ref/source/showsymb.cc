@@ -72,7 +72,14 @@ static unsigned short _cell_feat_show_colour(const map_cell& cell,
                 colour = LIGHTGREY; // 1/12
         }
     }
-    else if (cell.flags & MAP_BLOODY && !norecolour)
+    else if (cell.flags & MAP_BFB_CORPSE)
+        colour = LIGHTRED;
+    else if (!feat_is_solid(feat)
+             && (cell.flags & MAP_BLASPHEMY))
+    {
+        colour = LIGHTMAGENTA;
+    }
+    else if (cell.flags & MAP_BLOODY && !norecolour && Options.show_blood)
         colour = RED;
     else if (cell.flags & MAP_CORRODING && feat == DNGN_FLOOR)
         colour = LIGHTGREEN;
@@ -102,6 +109,9 @@ static unsigned short _cell_feat_show_colour(const map_cell& cell,
 
     if (feat_is_tree(feat) && env.forest_awoken_until)
         colour = ETC_AWOKEN_FOREST;
+
+    if (feat == DNGN_MUD)
+        colour = BROWN;
 
     if (feat == DNGN_FLOOR)
     {
@@ -133,10 +143,6 @@ static unsigned short _cell_feat_show_colour(const map_cell& cell,
             colour = ETC_ORB_GLOW;
         else if (cell.flags & MAP_QUAD_HALOED)
             colour = BLUE;
-#if TAG_MAJOR_VERSION == 34
-        else if (cell.flags & MAP_HOT)
-            colour = ETC_FIRE;
-#endif
     }
 
     return colour;
@@ -202,24 +208,30 @@ static int _get_mons_colour(const monster_info& mi)
         col |= COLFLAG_FRIENDLY_MONSTER;
     else if (mi.attitude != ATT_HOSTILE)
         col |= COLFLAG_NEUTRAL_MONSTER;
-    else if (Options.stab_brand != CHATTR_NORMAL
+    else if (Options.stab_highlight != CHATTR_NORMAL
              && mi.is(MB_STABBABLE))
     {
         col |= COLFLAG_WILLSTAB;
     }
-    else if (Options.may_stab_brand != CHATTR_NORMAL
+    else if (Options.may_stab_highlight != CHATTR_NORMAL
              && mi.is(MB_DISTRACTED))
     {
         col |= COLFLAG_MAYSTAB;
     }
+    else if (Options.unusual_highlight != CHATTR_NORMAL
+             && mi.attitude == ATT_HOSTILE
+             && mi.has_unusual_items())
+    {
+        col |= COLFLAG_UNUSUAL_MASK;
+    }
     else if (mons_class_is_stationary(mi.type))
     {
-        if (Options.feature_item_brand != CHATTR_NORMAL
+        if (Options.feature_item_highlight != CHATTR_NORMAL
             && feat_stair_direction(env.grid(mi.pos)) != CMD_NO_CMD)
         {
             col |= COLFLAG_FEATURE_ITEM;
         }
-        else if (Options.heap_brand != CHATTR_NORMAL
+        else if (Options.heap_highlight != CHATTR_NORMAL
                  && you.visible_igrd(mi.pos) != NON_ITEM
                  && !crawl_state.game_is_arena())
         {
@@ -227,7 +239,7 @@ static int _get_mons_colour(const monster_info& mi)
         }
     }
 
-    // Backlit monsters are fuzzy and override colours, but not brands.
+    // Backlit monsters are fuzzy and override colours, but not highlights.
     if (!crawl_state.game_is_arena()
         && !you.can_see_invisible()
         && mi.is(MB_INVISIBLE)
@@ -502,13 +514,13 @@ static cglyph_t _get_cell_glyph_with_class(const map_cell& cell,
 
         if (cell.item())
         {
-            if (Options.feature_item_brand
+            if (Options.feature_item_highlight
                 && (feat_is_critical(cell.feat())
                     || feat_is_solid(cell.feat())))
             {
                 g.col |= COLFLAG_FEATURE_ITEM;
             }
-            else if (Options.trap_item_brand && feat_is_trap(cell.feat()))
+            else if (Options.trap_item_highlight && feat_is_trap(cell.feat()))
                 g.col |= COLFLAG_TRAP_ITEM;
         }
         break;
@@ -521,7 +533,7 @@ static cglyph_t _get_cell_glyph_with_class(const map_cell& cell,
 
         g = _get_item_override(*eitem);
 
-        if (feat_is_water(cell.feat()))
+        if (!feat_has_dry_floor(cell.feat()))
             g.col = _cell_feat_show_colour(cell, loc, coloured);
         else if (!g.col)
             g.col = eitem->get_colour();

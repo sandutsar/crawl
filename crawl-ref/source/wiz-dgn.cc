@@ -7,6 +7,7 @@
 
 #include "wiz-dgn.h"
 
+#include "abyss.h"
 #include "act-iter.h"
 #include "branch.h"
 #include "coordit.h"
@@ -423,7 +424,7 @@ void wizard_map_level()
     }
 
     mpr("Mapping level.");
-    magic_mapping(1000, 100, true, true);
+    magic_mapping(GDM, 100, true, true, false, true, false);
 
     for (rectangle_iterator ri(BOUNDARY_BORDER - 1); ri; ++ri)
     {
@@ -442,69 +443,29 @@ void wizard_map_level()
 
 bool debug_make_trap(const coord_def& pos)
 {
-    char requested_trap[80];
-    trap_type trap = TRAP_UNASSIGNED;
-    int gridch     = env.grid(pos);
-
-    if (gridch != DNGN_FLOOR)
+    if (env.grid(pos) != DNGN_FLOOR)
     {
         mpr("You need to be on a floor square to make a trap.");
         return false;
     }
 
-    msgwin_get_line("What kind of trap? ",
-                    requested_trap, sizeof(requested_trap));
-    if (!*requested_trap)
+    vector<WizardEntry> options;
+    for (int i = TRAP_FIRST_TRAP; i < NUM_TRAPS; ++i)
     {
-        canned_msg(MSG_OK);
+        auto name = trap_name(static_cast<trap_type>(i));
+        options.emplace_back(WizardEntry(name, i));
+    }
+    sort(options.begin(), options.end());
+    options.emplace_back(WizardEntry('*', "any", TRAP_RANDOM));
+
+    auto menu = WizardMenu("Make which kind of trap?", options);
+    if (!menu.run(true))
         return false;
-    }
 
-    string spec = lowercase_string(requested_trap);
-    vector<trap_type> matches;
-    vector<string>    match_names;
-
-    if (spec == "random" || spec == "any")
-        trap = TRAP_RANDOM;
-
-    for (int t = TRAP_FIRST_TRAP; t < NUM_TRAPS; ++t)
-    {
-        const trap_type tr = static_cast<trap_type>(t);
-        string tname       = lowercase_string(trap_name(tr));
-        if (spec.find(tname) != spec.npos)
-        {
-            trap = tr;
-            break;
-        }
-        else if (tname.find(spec) != tname.npos)
-        {
-            matches.push_back(tr);
-            match_names.push_back(tname);
-        }
-    }
-
-    if (trap == TRAP_UNASSIGNED)
-    {
-        if (matches.empty())
-        {
-            mprf("I know no traps named \"%s\".", spec.c_str());
-            return false;
-        }
-        // Only one match, use that
-        else if (matches.size() == 1)
-            trap = matches[0];
-        else
-        {
-            string prefix = "No exact match for trap '";
-            prefix += spec;
-            prefix += "', possible matches are: ";
-            mpr_comma_separated_list(prefix, match_names);
-            return false;
-        }
-    }
-
+    auto trap = static_cast<trap_type>(menu.result());
     place_specific_trap(you.pos(), trap);
-    mprf("Created %s, marked it undiscovered.",
+
+    mprf("Created %s.",
          (trap == TRAP_RANDOM)
             ? "a random trap"
             : trap_at(you.pos())->name(DESC_A).c_str());
@@ -523,25 +484,21 @@ bool debug_make_shop(const coord_def& pos)
         return false;
     }
 
-    char requested_shop[80];
-    msgwin_get_line("What kind of shop? ",
-                    requested_shop, sizeof(requested_shop));
-    if (!*requested_shop)
+    vector<WizardEntry> options;
+    for (int i = 0; i < NUM_SHOPS; ++i)
     {
-        canned_msg(MSG_OK);
-        return false;
+        auto name = shoptype_to_str(static_cast<shop_type>(i));
+        if (str_to_shoptype(name) == i) // Don't offer to make "removed" shops.
+            options.emplace_back(WizardEntry(name, i));
     }
+    sort(options.begin(), options.end());
+    options.emplace_back(WizardEntry('*', "any", SHOP_RANDOM));
 
-    const shop_type new_shop_type = str_to_shoptype(requested_shop);
-
-    if (new_shop_type == SHOP_UNASSIGNED)
-    {
-        mprf("Bad shop type: \"%s\"", requested_shop);
-        list_shop_types();
+    auto menu = WizardMenu("Make which kind of shop?", options);
+    if (!menu.run(true))
         return false;
-    }
 
-    place_spec_shop(pos, new_shop_type);
+    place_spec_shop(pos, static_cast<shop_type>(menu.result()));
     mpr("Done.");
     return true;
 }
@@ -803,24 +760,18 @@ void wizard_list_levels()
         const LevelInfo* lv = travel_cache.find_level_info(levs[i]);
         ASSERT(lv);
 
-        string cnts = "";
+        string cnts;
         for (int j = 0; j < NUM_DACTION_COUNTERS; j++)
-        {
-            char num[20];
-            sprintf(num, "%d/", lv->daction_counters[j]);
-            cnts += num;
-        }
+            cnts += make_stringf("%d/", lv->daction_counters[j]);
+
         mprf(MSGCH_DIAGNOSTICS, i+1, // inhibit merging
              "%-10s : %s", levs[i].describe().c_str(), cnts.c_str());
     }
 
     string cnts = "";
     for (int j = 0; j < NUM_DACTION_COUNTERS; j++)
-    {
-        char num[20];
-        sprintf(num, "%d/", query_daction_counter((daction_type)j));
-        cnts += num;
-    }
+        cnts += make_stringf("%d/", query_daction_counter((daction_type)j));
+
     mprf("%-10s : %s", "`- total", cnts.c_str());
 }
 
@@ -846,6 +797,14 @@ void wizard_recreate_level()
     level_id lev = level_id::current();
     _wizard_level_target = lev;
     dungeon_feature_type stair_taken = DNGN_STONE_STAIRS_DOWN_I;
+
+    if (lev.branch == BRANCH_ABYSS)
+    {
+        // abyss generation is different, and regenerating the abyss
+        // with the below code leads to strange behavior
+        abyss_teleport(true);
+        return;
+    }
 
     if (lev.depth == 1 && lev != BRANCH_DUNGEON)
         stair_taken = branches[lev.branch].entry_stairs;

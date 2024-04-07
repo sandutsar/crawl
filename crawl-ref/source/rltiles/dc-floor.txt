@@ -325,6 +325,17 @@ rect_gray1
 rect_gray2
 rect_gray3
 
+%weight 10
+depthstone_floor0 FLOOR_DEPTHSTONE
+%weight 7
+depthstone_floor1
+depthstone_floor2
+%weight 3
+depthstone_floor3
+%weight 1
+depthstone_floor4
+
+%weight 10
 floor_vines0 FLOOR_VINES
 floor_vines1
 floor_vines2
@@ -332,6 +343,11 @@ floor_vines3
 floor_vines4
 floor_vines5
 floor_vines6
+
+bmaus_floor0 BORG_FLOOR
+bmaus_floor1
+bmaus_floor2
+bmaus_floor3
 
 rough_red0 FLOOR_ROUGH FLOOR_ROUGH_RED
 rough_red1
@@ -1008,6 +1024,17 @@ woodground06
 woodground07
 woodground08
 woodground09
+
+studio0 FLOOR_STUDIO
+studio1
+studio2
+studio3
+studio4
+studio5
+studio6
+studio7
+studio8
+studio9
 
 cage0 FLOOR_CAGE
 cage1

@@ -11,10 +11,12 @@
 #include <numeric>
 #include <sstream>
 
+#include "ability.h"
 #include "act-iter.h"
 #include "areas.h"
 #include "artefact.h"
 #include "art-enum.h"
+#include "attack.h"
 #include "attitude-change.h"
 #include "bloodspatter.h"
 #include "branch.h"
@@ -31,6 +33,7 @@
 #include "directn.h"
 #include "dungeon.h"
 #include "english.h"
+#include "env.h"
 #include "fight.h"
 #include "files.h"
 #include "fineff.h"
@@ -46,6 +49,8 @@
 #include "item-status-flag-type.h"
 #include "items.h"
 #include "item-use.h"
+#include "killer-type.h"
+#include "level-state-type.h"
 #include "libutil.h"
 #include "losglobal.h"
 #include "macro.h"
@@ -56,8 +61,10 @@
 #include "mon-behv.h"
 #include "mon-death.h"
 #include "mon-gear.h" // H: give_weapon()/give_armour()
+#include "mon-pathfind.h"
 #include "mon-place.h"
 #include "mon-poly.h"
+#include "mon-speak.h"
 #include "mon-tentacle.h"
 #include "mon-util.h"
 #include "movement.h"
@@ -66,6 +73,7 @@
 #include "ouch.h"
 #include "output.h"
 #include "place.h"
+#include "player.h"
 #include "player-equip.h"
 #include "player-stats.h"
 #include "potion.h"
@@ -78,7 +86,6 @@
 #include "spl-monench.h"
 #include "spl-transloc.h"
 #include "spl-util.h"
-#include "spl-wpnench.h"
 #include "sprint.h"
 #include "stairs.h"
 #include "state.h"
@@ -91,6 +98,7 @@
  #include "rltiles/tiledef-main.h"
 #endif
 #include "timed-effects.h"
+#include "transform.h" // untransform
 #include "traps.h"
 #include "viewchar.h"
 #include "view.h"
@@ -150,9 +158,12 @@ bool bless_weapon(god_type god, brand_type brand, colour_t colour)
     }
 
     item_def& wpn(you.inv[item_slot]);
-    // Only TSO allows blessing ranged weapons.
-    if (!is_brandable_weapon(wpn, brand == SPWPN_HOLY_WRATH, true))
+    // TSO and KIKU allow blessing ranged weapons, but LUGONU does not.
+    if (!is_brandable_weapon(wpn, brand == SPWPN_HOLY_WRATH
+                                                                  || brand == SPWPN_PAIN, true))
+    {
         return false;
+    }
 
     string prompt = "Do you wish to have " + wpn.name(DESC_YOUR)
                        + " ";
@@ -167,12 +178,6 @@ bool bless_weapon(god_type god, brand_type brand, colour_t colour)
     {
         canned_msg(MSG_OK);
         return false;
-    }
-
-    if (you.duration[DUR_EXCRUCIATING_WOUNDS]) // just in case
-    {
-        ASSERT(you.weapon());
-        end_weapon_brand(*you.weapon());
     }
 
     string old_name = wpn.name(DESC_A);
@@ -1207,9 +1212,7 @@ bool zin_recite_to_single_monster(const coord_def& where)
 static void _zin_saltify(monster* mon)
 {
     const coord_def where = mon->pos();
-    const monster_type pillar_type =
-        mons_is_zombified(*mon) ? mons_zombie_base(*mon)
-                                : mons_species(mon->type);
+    const monster_type pillar_type = mons_species(mons_base_type(*mon));
     const int hd = mon->get_hit_dice();
 
     simple_monster_message(*mon, " is turned into a pillar of salt by the wrath of Zin!");
@@ -1230,7 +1233,7 @@ static void _zin_saltify(monster* mon)
         // Enemies with more HD leave longer-lasting pillars of salt.
         int time_left = (random2(8) + hd) * BASELINE_DELAY;
         mon_enchant temp_en(ENCH_SLOWLY_DYING, 1, 0, time_left);
-        pillar->update_ench(temp_en);
+        pillar->add_ench(temp_en);
     }
 }
 
@@ -1316,7 +1319,7 @@ void tso_divine_shield()
 {
     if (!you.duration[DUR_DIVINE_SHIELD])
     {
-        if (you.shield())
+        if (is_shield(you.shield()))
         {
             mprf("Your shield is strengthened by %s divine power.",
                  apostrophise(god_name(GOD_SHINING_ONE)).c_str());
@@ -1398,35 +1401,12 @@ void elyvilon_remove_divine_vigour()
 
 bool vehumet_supports_spell(spell_type spell)
 {
-    if (spell_typematch(spell, spschool::conjuration))
-        return true;
-
     // Conjurations work by conjuring up a chunk of short-lived matter and
     // propelling it towards the victim. This is the most popular way, but
     // by no means it has a monopoly for being destructive.
     // Vehumet loves all direct physical destruction.
-    if (spell == SPELL_SHATTER
-        || spell == SPELL_LRD
-        || spell == SPELL_SANDBLAST
-        || spell == SPELL_AIRSTRIKE
-        || spell == SPELL_POLAR_VORTEX
-        || spell == SPELL_FREEZE
-        || spell == SPELL_IGNITE_POISON
-        || spell == SPELL_OZOCUBUS_REFRIGERATION
-        || spell == SPELL_OLGREBS_TOXIC_RADIANCE
-        || spell == SPELL_VIOLENT_UNRAVELLING
-        || spell == SPELL_INNER_FLAME
-        || spell == SPELL_IGNITION
-        || spell == SPELL_FROZEN_RAMPARTS
-        || spell == SPELL_MAXWELLS_COUPLING
-        || spell == SPELL_NOXIOUS_BOG
-        || spell == SPELL_POISONOUS_VAPOURS
-        || spell == SPELL_SCORCH)
-    {
-        return true;
-    }
-
-    return false;
+    return spell_typematch(spell, spschool::conjuration)
+           || (get_spell_flags(spell) & spflag::destructive);
 }
 
 void trog_do_trogs_hand(int pow)
@@ -1444,278 +1424,298 @@ void trog_remove_trogs_hand()
     you.duration[DUR_TROGS_HAND] = 0;
 }
 
-/**
- * Has the monster been given a Beogh gift?
- *
- * @param mon the orc in question.
- * @returns whether you have given the monster a Beogh gift before now.
- */
-bool given_gift(const monster* mon)
+// Return whether the player can light the torch on their current floor
+// (ie: it is a valid place to do so and it has never been lit here before)
+string yred_cannot_light_torch_reason()
 {
-    return mon->props.exists(BEOGH_RANGE_WPN_GIFT_KEY)
-            || mon->props.exists(BEOGH_MELEE_WPN_GIFT_KEY)
-            || mon->props.exists(BEOGH_ARM_GIFT_KEY)
-            || mon->props.exists(BEOGH_SH_GIFT_KEY);
+    // First check invalid locations
+    if (player_in_branch(BRANCH_TEMPLE))
+    {
+        return "There are no souls to scour here; only the pathetic idols"
+               " of powerless gods.";
+    }
+    else if (player_in_branch(BRANCH_BAZAAR) || player_in_branch(BRANCH_TROVE))
+        return "There are no souls worth scouring here.";
+    else if (player_in_branch(BRANCH_ABYSS))
+        return "Not even a god could conquer a realm without end; waste no time trying.";
+
+    if (!you.props.exists(YRED_TORCH_USED_KEY))
+        return "";
+
+    CrawlHashTable &levels = you.props[YRED_TORCH_USED_KEY].get_table();
+    if (levels.exists(level_id::current().describe()))
+    {
+        return "You have raised the torch once already on this floor."
+               " Yredelemnul offers no second-chances.";
+    }
+
+    return "";
 }
 
-/**
- * Checks whether the target monster is a valid target for beogh item-gifts.
- *
- * @param mons[in]  The monster to consider giving an item to.
- * @param quiet     Whether to print messages if the target is invalid.
- * @return          Whether the player can give an item to the monster.
- */
-bool beogh_can_gift_items_to(const monster* mons, bool quiet)
+bool yred_light_the_torch()
 {
-    if (!mons || !mons->visible_to(&you))
+    mprf("You lift the black torch aloft and begin your conquest of %s in "
+         "Yredelemnul's name!",
+            level_id::current().describe(true, true).c_str());
+
+    // Determine number of torch charges based on piety stars.
+    // Note: You are given 'hidden' internal torchlight charges even below the
+    // piety threshold to hurl torchlight, in case you gain that ability on the
+    // current floor.
+    you.props[YRED_TORCH_POWER_KEY] = min(5, max(piety_rank(), 2));
+
+    // Mark the torch as having been used on this level
+    you.props[YRED_TORCH_USED_KEY].get_table()
+        [level_id::current().describe()] = true;
+
+    // No instant allies at 0*
+    if (you.piety < piety_breakpoint(0))
+        return true;
+
+    bool aid = false;
+
+    // The power of the allies you get is based on the player's xl, but capped
+    // by their current piety. 5* allows fully uncapped servants.
+    int cap = div_rand_round(min((int)you.piety, piety_breakpoint(4)) * 27, piety_breakpoint(4));
+    int pow = min(you.experience_level, cap);
+
+    // Summon one stronger servant and two lesser ones.
+    // (Note that a 'single' servant can be multiple monsters, depending on what
+    // type we roll)
+    if (yred_random_servant(pow))
+        aid = true;
+    if (yred_random_servant(div_rand_round(pow * 7, 10), false, 2))
+        aid = true;
+    // At very high power, a chance for additional servants
+    if (x_chance_in_y(max(0, pow - 20), 10))
     {
-        if (!quiet)
-            canned_msg(MSG_NOTHING_THERE);
-        return false;
+        if (yred_random_servant(div_rand_round(pow * random_range(6, 9), 10), false, 2))
+            aid = true;
     }
 
-    if (!is_orcish_follower(*mons) || mons_genus(mons->type) != MONS_ORC)
-    {
-        if (!quiet)
-            mpr("That's not an orcish ally!");
-        return false;
-    }
-
-    if (!mons->is_named())
-    {
-        if (!quiet)
-            mpr("That orc has not proved itself worthy of your gift.");
-        return false;
-    }
-
-    if (given_gift(mons))
-    {
-        if (!quiet)
-        {
-            mprf("%s has already been given a gift.",
-                 mons->name(DESC_THE, false).c_str());
-        }
-        return false;
-    }
+    if (aid)
+        mpr("Yredelemnul sends servants to aid you!");
 
     return true;
 }
 
-/**
- * Checks whether there are any valid targets for beogh gifts in LOS.
- */
-static bool _valid_beogh_gift_targets_in_sight()
+// Called whenever you leave a floor with the black torch lit.
+// Handles cleanup and prints messages based on how thoroughly the player
+// scoured the floor.
+void yred_end_conquest()
 {
-    for (monster_near_iterator rad(you.pos(), LOS_NO_TRANS); rad; ++rad)
-        if (beogh_can_gift_items_to(*rad))
-            return true;
-    return false;
-}
-
-/**
- * Allow the player to give an item to a named orcish ally that hasn't
- * been given a gift before
- *
- * @returns whether an item was given.
- */
-bool beogh_gift_item()
-{
-    if (!_valid_beogh_gift_targets_in_sight())
+    // Calculate how cleared the floor is:
+    int souls_remaining = 0;
+    for (monster_iterator mi; mi; ++mi)
     {
-        mpr("No worthy followers in sight.");
-        return false;
+        if (!mi->wont_attack() && !mons_is_firewood(**mi)
+            && mons_can_be_spectralised(**mi, true)
+            // Ignore monsters in no-tele-into areas, since these are often
+            // literally unreachable, and we also don't want Yred to be unhappy
+            // whenever there was a ghost vault on the floor.
+            && !(env.pgrid(mi->pos()) & FPROP_NO_TELE_INTO))
+        {
+            ++souls_remaining;
+        }
     }
 
-    dist spd;
+    int kills = you.props[YRED_KILLS_LOGGED_KEY].get_int();
 
-    direction_chooser_args args;
-    args.restricts = DIR_TARGET;
-    args.mode = TARG_BEOGH_GIFTABLE;
-    args.range = LOS_RADIUS;
-    args.needs_path = false;
-    args.self = confirm_prompt_type::cancel;
-    args.show_floor_desc = true;
-    args.top_prompt = "Select a follower to give a gift to.";
+    int ratio = kills * 100 / (kills + souls_remaining + 1);
 
-    direction(spd, args);
+    // Print a message about how happy Yred is about our performance this floor
+    string msg = "You return your torch's flame to Yredelemnul,";
 
-    if (!spd.isValid)
-    {
-        canned_msg(MSG_OK);
-        return false;
-    }
-
-    monster* mons = monster_at(spd.target);
-    if (!beogh_can_gift_items_to(mons, false))
-        return false;
-
-    int item_slot = prompt_invent_item("Give which item?",
-                                       menu_type::invlist, OSEL_BEOGH_GIFT);
-
-    if (item_slot == PROMPT_ABORT || item_slot == PROMPT_NOTHING)
-    {
-        canned_msg(MSG_OK);
-        return false;
-    }
-
-    item_def& gift = you.inv[item_slot];
-
-    const bool shield = is_shield(gift);
-    const bool body_armour = gift.base_type == OBJ_ARMOUR
-                             && get_armour_slot(gift) == EQ_BODY_ARMOUR;
-    const bool weapon = gift.base_type == OBJ_WEAPONS;
-    const bool range_weapon = weapon && is_range_weapon(gift);
-    const item_def* mons_weapon = mons->weapon();
-    const item_def* mons_alt_weapon = mons->mslot_item(MSLOT_ALT_WEAPON);
-
-    if (weapon && !mons->could_wield(gift)
-        || body_armour && !check_armour_size(gift, mons->body_size())
-        || !item_is_selected(gift, OSEL_BEOGH_GIFT))
-    {
-        mprf("You can't give that to %s.", mons->name(DESC_THE, false).c_str());
-
-        return false;
-    }
-    else if (shield
-             && (mons_weapon && mons->hands_reqd(*mons_weapon) == HANDS_TWO
-                 || mons_alt_weapon
-                    && mons->hands_reqd(*mons_alt_weapon) == HANDS_TWO))
-    {
-        mprf("%s can't equip that with a two-handed weapon.",
-             mons->name(DESC_THE, false).c_str());
-        return false;
-    }
-
-    // if we're giving a ranged weapon to an orc holding a melee weapon in
-    // their hands, or vice versa, put it in their carried slot instead.
-    // this will of course drop anything that's there.
-    const bool use_alt_slot = weapon && mons_weapon
-                              && is_range_weapon(gift) !=
-                                 is_range_weapon(*mons_weapon);
-
-    const auto mslot = body_armour ? MSLOT_ARMOUR :
-                                    shield ? MSLOT_SHIELD :
-                              use_alt_slot ? MSLOT_ALT_WEAPON :
-                                             MSLOT_WEAPON;
-
-    item_def *floor_item = mons->take_item(item_slot, mslot);
-    if (!floor_item)
-    {
-        // this probably means move_to_grid in drop_item failed?
-        mprf(MSGCH_ERROR, "Gift failed: %s is unable to take %s.",
-                                        mons->name(DESC_THE, false).c_str(),
-                                        gift.name(DESC_THE, false).c_str());
-        return false;
-    }
-    if (use_alt_slot)
-        mons->swap_weapons();
-
-    dprf("is_ranged weap: %d", range_weapon);
-    if (range_weapon)
-        gift_ammo_to_orc(mons);
-
-    if (shield)
-        mons->props[BEOGH_SH_GIFT_KEY] = true;
-    else if (body_armour)
-        mons->props[BEOGH_ARM_GIFT_KEY] = true;
-    else if (range_weapon)
-        mons->props[BEOGH_RANGE_WPN_GIFT_KEY] = true;
+    if (ratio > 90)
+        msg+= " and they are glorified by your conquest!";
+    else if (ratio > 65)
+        msg+= " and they are satisfied with your conquest.";
+    else if (ratio > 30)
+        msg+= " and feel their disappointment in your meagre crusade.";
     else
-        mons->props[BEOGH_MELEE_WPN_GIFT_KEY] = true;
+        msg+= " and feel their disdain for your failure.";
 
+    mprf(MSGCH_GOD, "%s", msg.c_str());
+
+    // Actually end the torch effect
+    you.props.erase(YRED_TORCH_POWER_KEY);
+    you.props.erase(YRED_KILLS_LOGGED_KEY);
+}
+
+bool yred_torch_is_raised()
+{
+    return yred_get_torch_power() > -1;
+}
+
+// Whether the black torch is currently raised, and how many uses of
+// Hurl Torchlight it has remaining. (Returns -1 if the torch is unlit, and
+// the number of remaining charges otherwise)
+int yred_get_torch_power()
+{
+    if (!you.props.exists(YRED_TORCH_POWER_KEY))
+        return -1;
+    else
+        return you.props[YRED_TORCH_POWER_KEY].get_int();
+}
+
+// Feed a slain enemy to fuel our torch (maybe)
+void yred_feed_torch(const monster* mons)
+{
+    if (!mons_can_be_spectralised(*mons, true))
+        return;
+
+    // Track any valid kill, so we can tell how throughly the player scoured
+    // the floor afterward
+    you.props[YRED_KILLS_LOGGED_KEY].get_int() += 1;
+
+    // Only gain fuel from uniques we could raise, and will not bind
+    if (!mons_is_unique(mons->type)
+        || mons->has_ench(ENCH_SOUL_RIPE))
+    {
+        return;
+    }
+
+    if (!player_has_ability(ABIL_YRED_HURL_TORCHLIGHT))
+        return;
+
+    // Gain one torchlight charge for each unique killed
+    mprf(MSGCH_GOD, "The black torch howls with new intensity!");
+    you.props[YRED_TORCH_POWER_KEY].get_int() += 1;
+}
+
+// Determine if this enemy is adjacent to at least one ally
+static bool _is_isolated_soul(monster* mons)
+{
+    for (adjacent_iterator ai(mons->pos()); ai; ++ai)
+    {
+        const actor* act = actor_at(*ai);
+        if (!act || !act->is_monster())
+            continue;
+
+        const monster* mon = act->as_monster();
+        if (!mons_is_firewood(*mon) && mons_aligned(mons, mon))
+            return false;
+    }
     return true;
 }
 
-bool beogh_resurrect()
+#define YRED_BLASPEMY_MAX_RADIUS 4
+
+static void _set_blasphemy_radius(int radius)
 {
-    item_def* corpse = nullptr;
-    bool found_any = false;
-    for (stack_iterator si(you.pos()); si; ++si)
-        if (si->props.exists(ORC_CORPSE_KEY))
-        {
-            found_any = true;
-            if (yesno(("Resurrect "
-                       + si->props[ORC_CORPSE_KEY].get_monster().full_name(DESC_THE)
-                       + "?").c_str(), true, 'n'))
-            {
-                corpse = &*si;
-                break;
-            }
-        }
-    if (!corpse)
-    {
-        mprf("There's nobody %shere you can resurrect.",
-             found_any ? "else " : "");
-        return false;
-    }
+    const coord_def p = you.props[YRED_BLASPHEMY_CENTER_KEY].get_coord();
 
-    coord_def pos;
-    ASSERT(corpse->props.exists(ORC_CORPSE_KEY));
-    for (fair_adjacent_iterator ai(you.pos()); ai; ++ai)
-    {
-        if (!actor_at(*ai)
-            && corpse->props[ORC_CORPSE_KEY].get_monster().is_location_safe(*ai))
-        {
-            pos = *ai;
-        }
-    }
-    if (pos.origin())
-    {
-        mpr("There's no room!");
-        return false;
-    }
+    for (distance_iterator di(p, false, false, YRED_BLASPEMY_MAX_RADIUS); di; ++di)
+        env.pgrid(*di) &= ~FPROP_BLASPHEMY;
 
-    monster* mon = get_free_monster();
-    *mon = corpse->props[ORC_CORPSE_KEY];
-    destroy_item(corpse->index());
-    env.mid_cache[mon->mid] = mon->mindex();
-    mon->hit_points = mon->max_hit_points;
-    mon->inv.init(NON_ITEM);
-    for (stack_iterator si(you.pos()); si; ++si)
+    for (distance_iterator di(p, false, false, radius); di; ++di)
+        env.pgrid(*di) |= FPROP_BLASPHEMY;
+}
+
+void yred_make_blasphemy()
+{
+    you.props[YRED_BLASPHEMY_CENTER_KEY] = you.pos();
+    _set_blasphemy_radius(YRED_BLASPEMY_MAX_RADIUS);
+}
+
+void yred_end_blasphemy()
+{
+    if (!you.props.exists(YRED_BLASPHEMY_CENTER_KEY))
+        return;
+
+    _set_blasphemy_radius(-1);
+}
+
+static int _calc_blasphemy_radius()
+{
+    if (you.duration[DUR_FATHOMLESS_SHACKLES] < 20)
+        return 0;
+    else if (you.duration[DUR_FATHOMLESS_SHACKLES] < 50)
+        return 1;
+    else if (you.duration[DUR_FATHOMLESS_SHACKLES] < 90)
+        return 2;
+    if (you.duration[DUR_FATHOMLESS_SHACKLES] < 150)
+        return 3;
+    else
+        return 4;
+}
+
+void yred_fathomless_shackles_effect(int delay)
+{
+    // Adjust blasphemy size based on duration
+    int radius = _calc_blasphemy_radius();
+    _set_blasphemy_radius(radius);
+
+    // You're not standing in the zone. Release all bound monsters and skip effects.
+    if (!is_blasphemy(you.pos()))
+        radius = 0;
+
+    int total_drained = 0;
+    const coord_def p = you.props[YRED_BLASPHEMY_CENTER_KEY].get_coord();
+    int pow = div_rand_round((7 + you.skill_rdiv(SK_INVOCATIONS, 7, 5)) * 5, delay);
+    for (monster_near_iterator mi(p); mi; ++mi)
     {
-        if (!si->props.exists(DROPPER_MID_KEY)
-            || si->props[DROPPER_MID_KEY].get_int() != int(mon->mid))
+        if (grid_distance(mi->pos(), p) > radius
+            || mi->wont_attack() || mons_is_firewood(**mi))
         {
             continue;
         }
-        unwind_var<int> save_speedinc(mon->speed_increment);
-        mon->pickup_item(*si, false, true);
+
+        if (!mi->has_ench(ENCH_BOUND))
+        {
+            mi->add_ench(mon_enchant(ENCH_BOUND, 0, &you, INFINITE_DURATION));
+            mi->props[YRED_SHACKLES_KEY] = true;
+        }
+
+        // Cache this first, since damage might kill them
+        bool can_drain = actor_is_susceptible_to_vampirism(**mi, false);
+
+        int dam = resist_adjust_damage(*mi, BEAM_NEG, random2avg(pow, 2));
+        if (_is_isolated_soul(*mi))
+            dam *= 3/2;
+
+        // You can't drain life from summons, but you can still hurt them.
+        int dam_done = mi->hurt(&you, dam, BEAM_NEG, KILLED_BY_BEAM);
+        if (can_drain)
+            total_drained += dam_done;
+
+        behaviour_event(*mi, ME_WHACK, &you);
     }
-    mon->move_to_pos(pos);
-    mon->timeout_enchantments(100);
-    beogh_convert_orc(mon, conv_t::resurrection);
 
-    return true;
+    // Cap healing so that we can make this still worth using against moderate
+    // numbers of enemies without making it complete invincibility against large
+    // numbers.
+    you.heal(min(total_drained / 2, delay * 2));
 }
 
-bool yred_injury_mirror()
+bool yred_can_bind_soul(monster* mon)
 {
-    return in_good_standing(GOD_YREDELEMNUL, 1)
-           && you.duration[DUR_MIRROR_DAMAGE]
-           && crawl_state.which_god_acting() != GOD_YREDELEMNUL;
+    return mons_can_be_spectralised(*mon, true)
+           && !mon->has_ench(ENCH_SOUL_RIPE)
+           && mon->attitude != ATT_FRIENDLY;
 }
 
-bool yred_can_enslave_soul(monster* mon)
+int yred_get_bound_soul_hp(monster_type mt, bool estimate_only)
 {
-    return mons_can_be_spectralised(*mon)
-           && !mons_enslaved_body_and_soul(*mon)
-           && mon->attitude != ATT_FRIENDLY
-           && mons_intel(*mon) >= I_HUMAN;
+    return get_monster_data(mt)->avg_hp_10x
+           * (7 + (estimate_only ? (you.skill(SK_INVOCATIONS) / 5)
+                                 : you.skill_rdiv(SK_INVOCATIONS, 1, 5))) / 100
+           + 15;
 }
 
-void yred_make_enslaved_soul(monster* mon, bool force_hostile)
+void yred_make_bound_soul(monster* mon, bool force_hostile)
 {
     ASSERT(mon); // XXX: change to monster &mon
-    ASSERT(mons_enslaved_body_and_soul(*mon));
+    ASSERT(mon->has_ench(ENCH_SOUL_RIPE));
 
+    remove_bound_soul_companion();
     add_daction(DACT_OLD_CHARMD_SOULS_POOF);
-    remove_enslaved_soul_companion();
 
     const string whose = you.can_see(*mon) ? apostrophise(mon->name(DESC_THE))
                                            : mon->pronoun(PRONOUN_POSSESSIVE);
 
-    // Remove the monster's soul-enslaving enchantment, as it's no
-    // longer needed.
+    // Heal the health we paid wrestling for this soul
+    you.heal(mon->get_ench(ENCH_SOUL_RIPE).degree);
     mon->del_ench(ENCH_SOUL_RIPE, false, false);
 
     // Remove the monster's invisibility enchantment. If we don't do
@@ -1741,24 +1741,22 @@ void yred_make_enslaved_soul(monster* mon, bool force_hostile)
                                     { return is_holy_item(item); });
     mon->remove_summons();
 
+    // Fire death events (since the monster avoids *actually* dying).
+    // In practice, this mostly means "Let Binding TRJ actually open the vault"
+    handle_monster_dies_lua(*mon, KILL_BOUND);
+    fire_monster_death_event(mon, KILL_BOUND, false);
+
     const monster orig = *mon;
 
     // Use the original monster type as the zombified type here, to get
     // the proper stats from it.
-    define_zombie(mon, mon->type, MONS_SPECTRAL_THING);
+    define_zombie(mon, mon->type, MONS_BOUND_SOUL);
 
-    // If the original monster has been levelled up, its HD might be different
-    // from its class HD, in which case its HP should be rerolled to match.
-    if (mon->get_experience_level() != orig.get_experience_level())
-    {
-        mon->set_hit_dice(max(orig.get_experience_level(), 1));
-        roll_zombie_hp(mon);
-    }
-
-    mon->colour = ETC_UNHOLY;
+    // Modify health based on invocations skill
+    mon->max_hit_points = yred_get_bound_soul_hp(orig.type);
+    mon->hit_points = mon->max_hit_points;
 
     mon->flags |= MF_NO_REWARD;
-    mon->flags |= MF_ENSLAVED_SOUL;
 
     // If the original monster type has melee abilities, make sure
     // its spectral thing has them as well.
@@ -1770,13 +1768,17 @@ void yred_make_enslaved_soul(monster* mon, bool force_hostile)
     if (mon->spells.size())
         mon->props[CUSTOM_SPELLS_KEY] = true;
 
-    name_zombie(*mon, orig);
+    mon->props[KNOWN_MAX_HP_KEY] = mon->max_hit_points;
 
-    mons_make_god_gift(*mon, GOD_YREDELEMNUL);
-    add_companion(mon);
+    name_zombie(*mon, orig);
 
     mon->attitude = !force_hostile ? ATT_FRIENDLY : ATT_HOSTILE;
     behaviour_event(mon, ME_ALERT, force_hostile ? &you : 0);
+
+    mons_att_changed(mon);
+
+    mons_make_god_gift(*mon, GOD_YREDELEMNUL);
+    add_companion(mon);
 
     mon->stop_constricting_all();
     mon->stop_being_constricted();
@@ -1788,133 +1790,32 @@ void yred_make_enslaved_soul(monster* mon, bool force_hostile)
         invalidate_agrid();
     }
 
+    // schedule our actual revival for the end of this combat round
+    avoided_death_fineff::schedule(mon);
+
     mprf("%s soul %s.", whose.c_str(),
          !force_hostile ? "is now yours" : "fights you");
-}
-
-bool kiku_receive_corpses(int pow)
-{
-    // pow = necromancy * 4, ranges from 0 to 108
-    dprf("kiku_receive_corpses() power: %d", pow);
-
-    // Kiku gives branch-appropriate corpses (like shadow creatures).
-    // 1d2 at 0 Nec, up to 8 at 27 Nec.
-    int expected_extra_corpses = 1 + random2(2) + random2(pow / 18);
-    int corpse_delivery_radius = 1;
-
-    // We should get the same number of corpses
-    // in a hallway as in an open room.
-    int spaces_for_corpses = 0;
-    for (radius_iterator ri(you.pos(), corpse_delivery_radius, C_SQUARE,
-                            LOS_NO_TRANS, true); ri; ++ri)
-    {
-        if (mons_class_can_pass(MONS_HUMAN, env.grid(*ri)))
-            spaces_for_corpses++;
-    }
-    // floating over lava, heavy tomb abuse, etc
-    if (!spaces_for_corpses)
-        spaces_for_corpses++;
-
-    int percent_chance_a_square_receives_extra_corpse = // can be > 100
-        int(float(expected_extra_corpses) / float(spaces_for_corpses) * 100.0);
-
-    int corpses_created = 0;
-
-    for (radius_iterator ri(you.pos(), corpse_delivery_radius, C_SQUARE,
-                            LOS_NO_TRANS); ri; ++ri)
-    {
-        bool square_is_walkable = mons_class_can_pass(MONS_HUMAN, env.grid(*ri));
-        bool square_is_player_square = (*ri == you.pos());
-        bool square_gets_corpse =
-            random2(100) < percent_chance_a_square_receives_extra_corpse
-            || square_is_player_square && random2(100) < 97;
-
-        if (!square_is_walkable || !square_gets_corpse)
-            continue;
-
-        corpses_created++;
-
-        // Find an appropriate monster corpse for level and power.
-        const int adjusted_power = min(pow / 4, random2(random2(pow)));
-        // Pick a place based on the power. This may be below the branch's
-        // start, that's ok.
-        const level_id lev(you.where_are_you, adjusted_power
-                           - absdungeon_depth(you.where_are_you, 0));
-        const monster_type mon_type = pick_local_corpsey_monster(lev);
-        ASSERT(mons_class_can_be_zombified(mons_species(mon_type)));
-
-        // Create corpse object.
-        monster dummy;
-        dummy.type = mon_type;
-        define_monster(dummy);
-        dummy.position = *ri;
-
-        item_def* corpse = place_monster_corpse(dummy, true);
-        if (!corpse)
-            continue;
-
-        // Higher piety means fresher corpses.
-        int rottedness = 200 -
-            (!one_chance_in(10) ? random2(200 - you.piety)
-                                : random2(100 + random2(75)));
-        corpse->freshness = rottedness;
-    }
-
-    if (corpses_created)
-    {
-        if (you_worship(GOD_KIKUBAAQUDGHA))
-        {
-            simple_god_message(corpses_created > 1 ? " delivers you corpses!"
-                                                   : " delivers you a corpse!");
-        }
-        maybe_update_stashes();
-        return true;
-    }
-    else
-    {
-        if (you_worship(GOD_KIKUBAAQUDGHA))
-            simple_god_message(" can find no cadavers for you!");
-        return false;
-    }
-}
-
-/**
- * Destroy a corpse at or adjacent to the player's location
- *
- * @param just_check True if just checking whether the ability is possible,
- *                   false if we should go ahead and destroy a corpse.
- * @return           True if a corpse was available, false otherwise.
-*/
-bool kiku_take_corpse(bool just_check)
-{
-    for (fair_adjacent_iterator ai(you.pos(), false); ai; ++ai)
-    {
-        for (stack_iterator si(*ai, true); si; ++si)
-        {
-            if (si->base_type != OBJ_CORPSES || si->sub_type != CORPSE_BODY)
-                continue;
-
-            if (just_check)
-                return true;
-
-            item_was_destroyed(*si);
-            destroy_item(si->index());
-            return true;
-        }
-    }
-
-    return false;
 }
 
 bool kiku_gift_capstone_spells()
 {
     ASSERT(can_do_capstone_ability(you.religion));
 
-    vector<spell_type> spells = { SPELL_HAUNT,
-                                  SPELL_BORGNJORS_REVIVIFICATION,
-                                  SPELL_INFESTATION,
-                                  SPELL_NECROMUTATION,
-                                  SPELL_DEATHS_DOOR };
+    vector<spell_type> spells;
+    vector<spell_type> candidates = { SPELL_HAUNT,
+                                      SPELL_BORGNJORS_REVIVIFICATION,
+                                      SPELL_INFESTATION,
+                                      SPELL_DEATHS_DOOR };
+
+    for (auto spell : candidates)
+        if (!spell_is_useless(spell, false))
+            spells.push_back(spell);
+
+    if (spells.empty())
+    {
+        simple_god_message(" has no more spells that you can make use of!");
+        return false;
+    }
 
     string msg = "Do you wish to receive knowledge of "
                  + comma_separated_fn(spells.begin(), spells.end(), spell_title)
@@ -1935,7 +1836,7 @@ bool kiku_gift_capstone_spells()
 #endif
     more();
     you.one_time_ability_used.set(you.religion);
-    take_note(Note(NOTE_GOD_GIFT, you.religion));
+    take_note(Note(NOTE_GOD_GIFT, you.religion, 0, "forbidden knowledge"));
     return true;
 }
 
@@ -1964,48 +1865,6 @@ bool fedhas_passthrough(const monster_info* target)
            && fedhas_passthrough_class(target->type)
            && (mons_species(target->type) != MONS_OKLOB_PLANT
                || target->attitude != ATT_HOSTILE);
-}
-
-static bool _lugonu_warp_monster(monster& mon, int pow)
-{
-    if (coinflip())
-        return false;
-
-    if (!mon.friendly())
-        behaviour_event(&mon, ME_ANNOY, &you);
-
-    mon.hurt(&you, 1 + random2(pow / 6));
-
-    if (mon.alive() && !mon.no_tele())
-        mon.blink();
-
-    return true;
-}
-
-static void _lugonu_warp_area(int pow)
-{
-    apply_monsters_around_square([pow] (monster& mon) {
-        return _lugonu_warp_monster(mon, pow);
-    }, you.pos());
-}
-
-void lugonu_bend_space()
-{
-    const int pow = 4 + skill_bump(SK_INVOCATIONS);
-    const bool pre_warp = random2(pow) > 9;
-    const bool post_warp = random2(pow) > 9;
-
-    mprf("Space bends %saround you!", pre_warp && post_warp ? "violently " :
-                                      pre_warp || post_warp ? "sharply "
-                                                            : "");
-
-    if (pre_warp)
-        _lugonu_warp_area(pow);
-
-    uncontrolled_blink(true);
-
-    if (post_warp)
-        _lugonu_warp_area(pow);
 }
 
 void cheibriados_time_bend(int pow)
@@ -2047,10 +1906,10 @@ static int _slouch_damage(monster *mon)
                          : mon->type == MONS_JIANGSHI ? 90
                                                       : 1;
 
-    const int player_numer = BASELINE_DELAY * BASELINE_DELAY * BASELINE_DELAY;
+    const int player_number = BASELINE_DELAY * BASELINE_DELAY * BASELINE_DELAY;
     return 4 * (mon->speed * BASELINE_DELAY * jerk_num
                            / mon->action_energy(EUT_MOVE) / jerk_denom
-                - player_numer / player_movement_speed() / player_speed());
+                - player_number / player_movement_speed() / player_speed());
 }
 
 static bool _slouchable(coord_def where)
@@ -2101,7 +1960,7 @@ spret cheibriados_slouch(bool fail)
         }
 
     targeter_radius hitfunc(&you, LOS_DEFAULT);
-    if (stop_attack_prompt(hitfunc, "harm", _act_slouchable))
+    if (stop_attack_prompt(hitfunc, "Slouch", _act_slouchable))
         return spret::abort;
 
     fail_check();
@@ -2125,65 +1984,57 @@ static void _run_time_step()
     while (--you.duration[DUR_TIME_STEP] > 0);
 }
 
+static void _cleanup_time_steps()
+{
+    you.duration[DUR_TIME_STEP] = 0;
+
+    // Noxious bog terrain gets cleaned up while stepped from time.
+    // That seems consistent with clouds, etc, so let's just make the duration
+    // match, rather than trying to persist the bog during time steps or
+    // regenerating it afterward.
+    you.duration[DUR_NOXIOUS_BOG] = 0;
+}
+
 // A low-duration step from time, allowing monsters to get closer
 // to the player safely.
 void cheibriados_temporal_distortion()
 {
-    const coord_def old_pos = you.pos();
-
     you.duration[DUR_TIME_STEP] = 3 + random2(3);
-    you.moveto(coord_def(0, 0));
 
-    _run_time_step();
-
-    you.los_noise_level = 0;
-    you.los_noise_last_turn = 0;
-
-    if (monster *mon = monster_at(old_pos))
     {
-        mon->props[FAKE_BLINK_KEY].get_bool() = true;
-        mon->blink();
-        mon->props.erase(FAKE_BLINK_KEY);
-        if (monster *stubborn = monster_at(old_pos))
-            monster_teleport(stubborn, true, true);
+        player_vanishes absent;
+
+        _run_time_step();
+
+        // why only here and not for step from time?
+        you.los_noise_level = 0;
+        you.los_noise_last_turn = 0;
     }
 
-    you.moveto(old_pos);
-    you.duration[DUR_TIME_STEP] = 0;
+    _cleanup_time_steps();
 
     mpr("You warp the flow of time around you!");
 }
 
 void cheibriados_time_step(int pow) // pow is the number of turns to skip
 {
-    const coord_def old_pos = you.pos();
-
     mpr("You step out of the flow of time.");
     flash_view(UA_PLAYER, LIGHTBLUE);
     you.duration[DUR_TIME_STEP] = pow;
-    you.moveto(coord_def(0, 0));
+    {
+        player_vanishes absent(true);
 
-    you.time_taken = 10;
-    _run_time_step();
-    // Update corpses, etc. This does also shift monsters, but only by
-    // a tiny bit.
-    update_level(pow * 10);
+        you.time_taken = 10;
+        _run_time_step();
+        // Update corpses, etc.
+        update_level(pow * 10);
 
 #ifndef USE_TILE_LOCAL
-    scaled_delay(1000);
+        scaled_delay(1000);
 #endif
 
-    if (monster *mon = monster_at(old_pos))
-    {
-        mon->props[FAKE_BLINK_KEY].get_bool() = true;
-        mon->blink();
-        mon->props.erase(FAKE_BLINK_KEY);
-        if (monster *stubborn = monster_at(old_pos))
-            monster_teleport(stubborn, true, true);
     }
-
-    you.moveto(old_pos);
-    you.duration[DUR_TIME_STEP] = 0;
+    _cleanup_time_steps();
 
     flash_view(UA_PLAYER, 0);
     mpr("You return to the normal time flow.");
@@ -2205,15 +2056,15 @@ static map<curse_type, curse_data> _ashenzari_curses =
     } },
     { CURSE_RANGED, {
         "Ranged Combat", "Range",
-        { SK_SLINGS, SK_BOWS, SK_CROSSBOWS, SK_THROWING },
+        { SK_RANGED_WEAPONS, SK_THROWING },
     } },
     { CURSE_ELEMENTS, {
         "Elements", "Elem",
         { SK_FIRE_MAGIC, SK_ICE_MAGIC, SK_AIR_MAGIC, SK_EARTH_MAGIC },
     } },
-    { CURSE_ALCHEMY, {
-        "Alchemy", "Alch",
-        { SK_POISON_MAGIC, SK_TRANSMUTATIONS },
+    { CURSE_SORCERY, {
+        "Sorcery", "Sorc",
+        { SK_CONJURATIONS, SK_ALCHEMY },
     } },
     { CURSE_COMPANIONS, {
         "Companions", "Comp",
@@ -2221,7 +2072,7 @@ static map<curse_type, curse_data> _ashenzari_curses =
     } },
     { CURSE_BEGUILING, {
         "Beguiling", "Bglg",
-        { SK_CONJURATIONS, SK_HEXES, SK_TRANSLOCATIONS },
+        { SK_HEXES, SK_TRANSLOCATIONS },
     } },
     { CURSE_SELF, {
         "Introspection", "Self",
@@ -2235,9 +2086,9 @@ static map<curse_type, curse_data> _ashenzari_curses =
         "Cunning", "Cun",
         { SK_DODGING, SK_STEALTH },
     } },
-    { CURSE_EVOCATIONS, {
-        "Evocations", "Evo",
-        { SK_EVOCATIONS },
+    { CURSE_DEVICES, {
+        "Devices", "Dev",
+        { SK_EVOCATIONS, SK_SHAPESHIFTING },
     } },
 };
 
@@ -2404,9 +2255,9 @@ bool ashenzari_curse_item()
 
     item_def& item(you.inv[item_slot]);
 
-    if (!item_is_cursable(item))
+    if (!item_is_selected(item, OSEL_CURSABLE))
     {
-        mpr("You can't curse that!");
+        mprf(MSGCH_PROMPT, "You cannot curse that!");
         return false;
     }
 
@@ -2437,6 +2288,12 @@ bool ashenzari_uncurse_item()
         return false;
 
     item_def& item(you.inv[item_slot]);
+
+    if (!item_is_selected(item, OSEL_CURSED_WORN))
+    {
+        mprf(MSGCH_PROMPT, "You cannot uncurse and destroy that!");
+        return false;
+    }
 
     if (is_unrandom_artefact(item, UNRAND_FINGER_AMULET)
         && you.equip[EQ_RING_AMULET] != -1)
@@ -2482,14 +2339,47 @@ bool ashenzari_uncurse_item()
 
 bool can_convert_to_beogh()
 {
-    if (silenced(you.pos()))
+    if (!(env.level_state & LSTATE_BEOGH) || you.hp * 3 / 2 > you.hp_max
+        || silenced(you.pos()))
+    {
         return false;
+    }
 
     for (monster* m : monster_near_iterator(you.pos(), LOS_NO_TRANS))
-        if (mons_allows_beogh_now(*m))
+        if (mons_offers_beogh_conversion_now(*m))
             return true;
 
     return false;
+}
+
+void announce_beogh_conversion_offer()
+{
+    if (you.attribute[ATTR_SEEN_BEOGH]
+        || you.has_mutation(MUT_FORLORN)
+        || you.religion != GOD_NO_GOD
+        || !(env.level_state & LSTATE_BEOGH)
+        || you.hp * 3 / 2 > you.hp_max)
+    {
+        return;
+    }
+
+    for (monster* m : monster_near_iterator(you.pos(), LOS_NO_TRANS))
+    {
+        if (mons_offers_beogh_conversion_now(*m))
+        {
+            mons_speaks_msg(m, getSpeakString("orc_priest_preaching"),
+                            MSGCH_TALK);
+
+            ASSERT_RANGE(get_talent(ABIL_CONVERT_TO_BEOGH, false).hotkey,
+                            'A', 'z' + 1);
+            mprf("(press <w>%c</w> on the <w>%s</w>bility menu to convert to Beogh)",
+                    get_talent(ABIL_CONVERT_TO_BEOGH, false).hotkey,
+                    command_to_string(CMD_USE_ABILITY).c_str());
+            you.attribute[ATTR_SEEN_BEOGH] = 1;
+
+            return;
+        }
+    }
 }
 
 void spare_beogh_convert()
@@ -2518,7 +2408,7 @@ void spare_beogh_convert()
 
         // Anyone who has seen the priest perform the ceremony will spare you
         // as well.
-        if (mons_allows_beogh(*mon))
+        if (mons_offers_beogh_conversion(*mon))
         {
             for (radius_iterator pi(you.pos(), LOS_DEFAULT); pi; ++pi)
             {
@@ -2549,13 +2439,320 @@ void spare_beogh_convert()
     you.religion = GOD_BEOGH;
     you.one_time_ability_used.set(GOD_BEOGH);
 
-    if (witc == 1)
-        mpr("The priest welcomes you and lets you live.");
+    // Grant the player succour for accepting the Shepherd as their god
+    you.heal(random_range(10, 20));
+    you.duration[DUR_CONF] = 0;
+
+    mpr("The priest grants you succour and welcomes you into the fold.");
+    if (witc > 1)
+        mpr("The other orcs roar their approval!");
+}
+
+static monster_type _get_orc_reinforcement_type(int pow)
+{
+    // 2/7 split between priests and fighters.
+    // (Sorcerers tend to be less useful in among such a swarm)
+    if (x_chance_in_y(5, 7))
+    {
+        if (x_chance_in_y(pow, 255))
+            return MONS_ORC_WARLORD;
+        else if (x_chance_in_y(pow, 110))
+            return MONS_ORC_KNIGHT;
+        else if (x_chance_in_y(pow, 75))
+            return MONS_ORC_WARRIOR;
+    }
     else
     {
-        mpr("With a roar of approval, the orcs welcome you as one of their own,"
-            " and spare your life.");
+        if (x_chance_in_y(pow, 135))
+            return MONS_ORC_HIGH_PRIEST;
+        else
+            return MONS_ORC_PRIEST;
     }
+
+    return MONS_ORC;
+}
+
+void beogh_blood_for_blood()
+{
+    // Mark all corpses at our feet as having already been used, in case this
+    // blood oath fails to generate enough piety to revive them.
+    string apostle_name;
+    for (stack_iterator si(you.pos()); si; ++si)
+    {
+        if (si->is_type(OBJ_CORPSES, CORPSE_BODY)
+            && si->props.exists(BEOGH_BFB_VALID_KEY))
+        {
+            si->props.erase(BEOGH_BFB_VALID_KEY);
+            apostle_name = si->props[CORPSE_NAME_KEY].get_string();
+        }
+    }
+
+    mprf("You place your %s atop %s's lifeless body and utter a vengeful prayer.",
+         you.hand_name(false).c_str(), apostle_name.c_str());
+
+    you.duration[DUR_BLOOD_FOR_BLOOD] = random_range(130, 180) * BASELINE_DELAY;
+
+    // Summon a bunch of high level orcs immediately around the player (based on
+    // invocations)
+    bool orc_spoke = false;
+    int pow = you.skill(SK_INVOCATIONS, 5);
+    int num_orcs = min(3 + you.skill_rdiv(SK_INVOCATIONS, 3, 4), 24);
+    for (distance_iterator di(you.pos(), false, true, 2); di && num_orcs > 0; ++di)
+    {
+        if (actor_at(*di) || !feat_has_solid_floor(env.grid(*di))
+            || !you.see_cell_no_trans(*di))
+        {
+            continue;
+        }
+
+        mgen_data mg(_get_orc_reinforcement_type(pow), BEH_FRIENDLY, *di,
+                     MHITNOT, MG_AUTOFOE | MG_FORCE_PLACE);
+        mg.set_summoned(&you, 0, MON_SUMM_AID, GOD_BEOGH);
+        monster* orc = create_monster(mg);
+        if (orc)
+        {
+            orc->flags |= MF_HARD_RESET;
+            orc->mark_summoned(0, true, MON_SUMM_AID, false);
+            orc->god = GOD_BEOGH;
+            num_orcs -= 1;
+
+            // At least one orc will always speak, but more may also do so
+            if (!orc_spoke || one_chance_in(12))
+            {
+                mons_speaks_msg(orc, getSpeakString("friendly bfb orc"), MSGCH_TALK);
+                orc_spoke = true;
+            }
+        }
+    }
+}
+
+static int _count_orcish_reinforcements()
+{
+    int count = 0;
+    for (monster_iterator mi; mi; ++mi)
+    {
+        if (mi->has_ench(ENCH_SUMMON)
+            && mi->get_ench(ENCH_SUMMON).degree == MON_SUMM_AID
+            && mons_genus(mi->type) == MONS_ORC)
+        {
+            count += 1;
+        }
+    }
+
+    return count;
+}
+
+static void _place_orcish_reinforcement()
+{
+    // Find placement spot
+    coord_def pos;
+    int tries_left = 5;
+    for (distance_iterator di(you.pos(), true, true, 9); di && tries_left > 0; ++di)
+    {
+        if (grid_distance(you.pos(), *di) < 8
+            || !feat_has_solid_floor(env.grid(*di))
+            || actor_at(*di))
+        {
+            continue;
+        }
+
+        // We're at least marginally viable, so let's try the more expensive checks
+        tries_left -= 1;
+
+        // Finally, test that we can reach the player from here
+        monster_pathfind mp;
+        mp.set_range(10);   // Don't search further than this
+        if (mp.init_pathfind(*di, you.pos()))
+        {
+            pos = *di;
+            break;
+        }
+    }
+
+    // If we found no suitable placement spot, bail out
+    if (pos.origin())
+        return;
+
+    // Otherwise, generate an orc!
+
+    mgen_data mg(MONS_ORC_PRIEST, BEH_FRIENDLY, pos, MHITNOT, MG_AUTOFOE);
+    mg.set_summoned(&you, 0, MON_SUMM_AID, GOD_BEOGH);
+    mg.cls = _get_orc_reinforcement_type(you.skill_rdiv(SK_INVOCATIONS, 7, 2));
+
+    monster* orc = create_monster(mg);
+    if (orc)
+    {
+        orc->flags |= MF_HARD_RESET;
+        orc->mark_summoned(0, true, MON_SUMM_AID, false);
+        orc->god = GOD_BEOGH;
+    }
+}
+
+void beogh_blood_for_blood_tick(int delay)
+{
+    // This isn't scaled by delay, since I'm not really sure how. We could make
+    // it probabilistic, but then there's the chance of going several turns
+    // without making any noise at all. Not sure...
+    noisy(12, you.pos());
+
+    // Cap the number of orcs we can summon at once (based on invocations)
+    int count = _count_orcish_reinforcements();
+    int max = 7 + you.skill_rdiv(SK_INVOCATIONS, 3, 4);
+    if (count >= max)
+        return;
+
+    // Summon orcs faster, the fewer of them we have.
+    // Scales from ~1 orc per 6 aut at 0, up to ~1 orc per 50 aut near max
+    int rate = 10 + 30 * (10 - (count * 10 / max)) / 10;
+    if (count * 3 <= max)
+        rate *= 2;
+
+    int num_to_summon = div_rand_round(rate, delay * 5);
+
+    for (int i = 0; i < num_to_summon; ++i)
+        _place_orcish_reinforcement();
+}
+
+void beogh_end_blood_for_blood()
+{
+    mprf(MSGCH_DURATION,
+         "You reach the end of your prayer and your brethren are recalled.");
+    for (monster_iterator mi; mi; ++mi)
+    {
+        if (mi->has_ench(ENCH_SUMMON)
+            && mi->get_ench(ENCH_SUMMON).degree == MON_SUMM_AID
+            && mons_genus(mi->type) == MONS_ORC)
+        {
+            place_cloud(CLOUD_TLOC_ENERGY, mi->pos(), 1 + random2(3), *mi);
+            monster_die(**mi, KILL_RESET, -1, true);
+        }
+    }
+    you.duration[DUR_BLOOD_FOR_BLOOD] = 0;
+}
+
+void beogh_ally_healing()
+{
+    if (!you.props.exists(BEOGH_DAMAGE_DONE_KEY)
+        || x_chance_in_y(2, 5))
+    {
+        you.props.erase(BEOGH_DAMAGE_DONE_KEY);
+        return;
+    }
+
+    int value = you.props[BEOGH_DAMAGE_DONE_KEY].get_int();
+    you.props.erase(BEOGH_DAMAGE_DONE_KEY);
+
+    value = value * 4 / 10;
+
+    // Skip small heals
+    if (value < 5)
+        return;
+
+    vector<monster*> heal_list;
+    for (monster_near_iterator mi(you.pos()); mi; ++mi)
+    {
+        if (mi->is_divine_companion() && mi->hit_points < mi->max_hit_points)
+            heal_list.push_back(*mi);
+    }
+
+    if (heal_list.empty())
+        return;
+
+    value = max(1, (int)(value / heal_list.size()));
+    int healing_done = 0;
+    for (auto mon : heal_list)
+    {
+        healing_done += min(value, mon->max_hit_points - mon->hit_points);
+        mon->heal(value);
+    }
+
+    mprf("%s %s%sinvigorated by your prowess.",
+          heal_list.size() == 1 ? heal_list[0]->name(DESC_THE).c_str()
+                                : "Your followers are",
+          heal_list.size() == 1 ? "is " : "",
+          healing_done > 25 ? " greatly " : "");
+}
+
+// Prompts the player for reasons they may not wish to leave a floor.
+// Returns whether the player decided to cancel the move.
+bool beogh_cancel_leaving_floor()
+{
+    if (!you_worship(GOD_BEOGH))
+        return false;
+
+    if (you.duration[DUR_BEOGH_DIVINE_CHALLENGE])
+    {
+        if (!yesno("Are you sure you wish to flee a divine trial? This will "
+                   "place you under penance!", false, 'n'))
+        {
+            mpr("Beogh appreciates your bravery.");
+            return true;
+        }
+    }
+
+    if (you.duration[DUR_BLOOD_FOR_BLOOD])
+    {
+        if (!yesno("Your vengeful prayer will end if you leave here."
+                   " Continue?", false, 'n'))
+        {
+            canned_msg(MSG_OK);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void beogh_increase_orcification()
+{
+    // Currently gaining a second level doesn't have much messaging. Perhaps in
+    // future, it should?
+    if (you.props.exists(ORCIFICATION_LEVEL_KEY))
+    {
+        you.props[ORCIFICATION_LEVEL_KEY] = 2;
+        mprf(MSGCH_MUTATION, "Your orcish features manifest fully.");
+        return;
+    }
+
+    // Adjust the message we give to the player's physiology.
+    string msg;
+    switch (you.species)
+    {
+        case SP_FORMICID:
+            msg += "Your mandibles take on a glossy white sheen, and your antennae grow pointier.";
+            break;
+
+        case SP_TENGU:
+            msg += "Your beak becomes more hooked, and the plumage around your ears grows tufted.";
+            break;
+
+        case SP_GARGOYLE:
+            msg += "You feel a divine power chisel tusks from your teeth and sculpt your ears to a sharp point.";
+            break;
+
+        case SP_VINE_STALKER:
+            msg += "A pair of ivory tusks grows out from your maw, and flowers begin to bloom upon you.";
+            break;
+
+        case SP_MUMMY:
+            msg += "A small pair of tusks begins to pierce through your wrappings.";
+            break;
+
+        case SP_BARACHI:
+            msg += "Your teeth grow more tusk-like, and your tympanum bulges.";
+            break;
+
+        case SP_OCTOPODE:
+            msg += "Your beak grows more hooked, and small fins emerge from the sides of your head.";
+            break;
+
+        default:
+            msg += "Your teeth grow more tusk-like, and your ears lengthen.";
+            break;
+    }
+
+    mprf(MSGCH_MUTATION, "%s", msg.c_str());
+    you.props[ORCIFICATION_LEVEL_KEY] = 1;
 }
 
 spret dithmenos_shadow_step(bool fail)
@@ -2638,6 +2835,8 @@ spret dithmenos_shadow_step(bool fail)
 
     fail_check();
 
+    you.stop_being_constricted(false, "step");
+
     const coord_def old_pos = you.pos();
     // XXX: This only ever fails if something's on the landing site;
     // perhaps this should be handled more gracefully.
@@ -2668,6 +2867,7 @@ static potion_type _gozag_potion_list[][4] =
     { POT_HASTE, POT_HEAL_WOUNDS, NUM_POTIONS, NUM_POTIONS },
     { POT_HASTE, POT_BRILLIANCE, NUM_POTIONS, NUM_POTIONS },
     { POT_HASTE, POT_RESISTANCE, NUM_POTIONS, NUM_POTIONS },
+    { POT_HASTE, POT_ENLIGHTENMENT, NUM_POTIONS, NUM_POTIONS },
     { POT_BRILLIANCE, POT_MAGIC, NUM_POTIONS, NUM_POTIONS },
     { POT_INVISIBILITY, POT_MIGHT, NUM_POTIONS, NUM_POTIONS },
     { POT_HEAL_WOUNDS, POT_CURING, POT_MAGIC, NUM_POTIONS },
@@ -2677,6 +2877,7 @@ static potion_type _gozag_potion_list[][4] =
     { POT_RESISTANCE, POT_MIGHT, NUM_POTIONS, NUM_POTIONS },
     { POT_RESISTANCE, POT_MIGHT, POT_HASTE, NUM_POTIONS },
     { POT_RESISTANCE, POT_INVISIBILITY, NUM_POTIONS, NUM_POTIONS },
+    { POT_RESISTANCE, POT_ENLIGHTENMENT, NUM_POTIONS, NUM_POTIONS },
     { POT_LIGNIFY, POT_MIGHT, POT_RESISTANCE, NUM_POTIONS },
 };
 
@@ -3072,6 +3273,32 @@ static void _gozag_place_shop(int index)
                     shop->shop_suffix_name.c_str());
 }
 
+static bool _shop_type_valid(shop_type type)
+{
+    switch (type)
+    {
+#if TAG_MAJOR_VERSION == 34
+    case SHOP_FOOD:
+    case SHOP_EVOKABLES:
+        return false;
+#endif
+    case SHOP_DISTILLERY:
+        return !you.has_mutation(MUT_NO_DRINK);
+    case SHOP_WEAPON:
+    case SHOP_WEAPON_ANTIQUE:
+        return !you.has_mutation(MUT_NO_GRASPING);
+    case SHOP_ARMOUR:
+    case SHOP_ARMOUR_ANTIQUE:
+        return !you.has_mutation(MUT_NO_ARMOUR);
+    case SHOP_JEWELLERY:
+        return !you.has_mutation(MUT_NO_JEWELLERY);
+    case SHOP_BOOK:
+        return !you.has_mutation(MUT_INNATE_CASTER);
+    default:
+        return true;
+    }
+}
+
 bool gozag_call_merchant()
 {
     // Only offer useful shops.
@@ -3079,25 +3306,8 @@ bool gozag_call_merchant()
     for (int i = 0; i < NUM_SHOPS; i++)
     {
         shop_type type = static_cast<shop_type>(i);
-#if TAG_MAJOR_VERSION == 34
-        if (type == SHOP_FOOD || type == SHOP_EVOKABLES)
-            continue;
-#endif
-        if (type == SHOP_DISTILLERY && you.has_mutation(MUT_NO_DRINK))
-            continue;
-
-        if (you.has_mutation(MUT_NO_ARMOUR) &&
-            (type == SHOP_ARMOUR
-             || type == SHOP_ARMOUR_ANTIQUE))
-        {
-            continue;
-        }
-        if ((type == SHOP_WEAPON || type == SHOP_WEAPON_ANTIQUE)
-            && you.has_mutation(MUT_NO_GRASPING))
-        {
-            continue;
-        }
-        valid_shops.push_back(type);
+        if (_shop_type_valid(type))
+            valid_shops.push_back(type);
     }
 
     // Set up some dummy shops.
@@ -3316,12 +3526,37 @@ bool gozag_bribe_branch()
 
 static int _upheaval_radius(int pow)
 {
-    return pow >= 100 ? 2 : 1;
+    return pow / 100 + 1;
+}
+
+static bool _qazlal_affected(coord_def pos)
+{
+    const actor *act = actor_at(pos);
+
+    if (act)
+    {
+        if (act->is_player())
+            return false;
+
+        if (act->is_monster())
+        {
+            const monster *mon = act->as_monster();
+            int summon_type = 0;
+            // Never fire at elemental forces.
+            if (mon && mon->is_summoned(nullptr, &summon_type)
+                && summon_type == MON_SUMM_AID)
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 spret qazlal_upheaval(coord_def target, bool quiet, bool fail, dist *player_target)
 {
-    int pow = you.skill(SK_INVOCATIONS, 6);
+    const int pow = you.skill(SK_INVOCATIONS, 6);
     const int max_radius = _upheaval_radius(pow);
 
     bolt beam;
@@ -3344,13 +3579,13 @@ spret qazlal_upheaval(coord_def target, bool quiet, bool fail, dist *player_targ
         if (!player_target)
             player_target = &target_local;
 
-        targeter_smite tgt(&you, LOS_RADIUS, 0, max_radius);
+        targeter_smite tgt(&you, LOS_RADIUS, max_radius-1, max_radius);
         direction_chooser_args args;
         args.restricts = DIR_TARGET;
         args.mode = TARG_HOSTILE;
         args.needs_path = false;
         args.top_prompt = "Aiming: <white>Upheaval</white>";
-        args.self = confirm_prompt_type::cancel;
+        args.self = confirm_prompt_type::none;
         args.hitfunc = &tgt;
         if (!spell_direction(*player_target, beam, &args))
             return spret::abort;
@@ -3365,7 +3600,7 @@ spret qazlal_upheaval(coord_def target, bool quiet, bool fail, dist *player_targ
         bolt tempbeam;
         tempbeam.source    = beam.target;
         tempbeam.target    = beam.target;
-        tempbeam.flavour   = BEAM_MISSILE;
+        tempbeam.flavour   = BEAM_QAZLAL;
         tempbeam.ex_size   = max_radius;
         tempbeam.hit       = AUTOMATIC_HIT;
         tempbeam.damage    = dice_def(AUTOMATIC_HIT, 1);
@@ -3414,11 +3649,15 @@ spret qazlal_upheaval(coord_def target, bool quiet, bool fail, dist *player_targ
     }
 
     vector<coord_def> affected;
-    affected.push_back(beam.target);
+    if (_qazlal_affected(beam.target))
+        affected.push_back(beam.target);
     for (radius_iterator ri(beam.target, max_radius, C_SQUARE, LOS_SOLID, true);
          ri; ++ri)
     {
         if (!in_bounds(*ri) || cell_is_solid(*ri))
+            continue;
+
+        if (!_qazlal_affected(*ri))
             continue;
 
         int chance = pow;
@@ -3439,14 +3678,12 @@ spret qazlal_upheaval(coord_def target, bool quiet, bool fail, dist *player_targ
     for (coord_def pos : affected)
         beam.draw(pos, false);
 
+    // When `quiet`, refresh the view after each complete draw pass. Add a bit
+    // of delay even for this, otherwise it goes by too quickly.
     if (quiet)
     {
-        // When `quiet`, refresh the view after each complete draw pass.
-        // why this call dance to refresh? I just copied it from bolt::draw
-        viewwindow(false);
-        update_screen();
-        scaled_delay(50); // add some delay per upheaval draw, otherwise it all
-                          // goes by too fast.
+        if (!Options.reduce_animations)
+            animation_delay(50, true);
     }
     else
     {
@@ -3581,17 +3818,21 @@ spret qazlal_disaster_area(bool fail)
         if (!in_bounds(*ri) || cell_is_solid(*ri))
             continue;
 
-        const monster_info* m = env.map_knowledge(*ri).monsterinfo();
-        if (m && mons_att_wont_attack(m->attitude)
-            && !mons_is_projectile(m->type))
+        if (!_qazlal_affected(*ri))
+            continue;
+
+        const monster *mon = monster_at(*ri);
+        if (mon && mons_att_wont_attack(mon->attitude)
+            && !mons_is_projectile(mon->type))
         {
             friendlies = true;
         }
 
         const int range = you.pos().distance_from(*ri);
-        const int dist = grid_distance(you.pos(), *ri);
         if (range <= upheaval_radius)
             continue;
+
+        const int dist = grid_distance(you.pos(), *ri);
 
         targets.push_back(*ri);
         // We weight using the square of grid distance, so monsters fewer tiles
@@ -3639,7 +3880,9 @@ spret qazlal_disaster_area(bool fail)
         targets.erase(targets.begin() + which);
         weights.erase(weights.begin() + which);
     }
-    scaled_delay(200);
+    // possibly this delay should be slightly increased if reduce_animations is
+    // true?
+    animation_delay(200, Options.reduce_animations);
 
     return spret::success;
 }
@@ -3701,7 +3944,7 @@ static const vector<mutation_type> _major_arcane_sacrifices =
 /// School-disabling mutations that are unfortunate for most characters.
 static const vector<mutation_type> _moderate_arcane_sacrifices =
 {
-    MUT_NO_TRANSMUTATION_MAGIC,
+    MUT_NO_ALCHEMY_MAGIC,
     MUT_NO_HEXES_MAGIC,
 };
 
@@ -3712,7 +3955,6 @@ static const vector<mutation_type> _minor_arcane_sacrifices =
     MUT_NO_FIRE_MAGIC,
     MUT_NO_ICE_MAGIC,
     MUT_NO_EARTH_MAGIC,
-    MUT_NO_POISON_MAGIC,
 };
 
 /// The list of all lists of arcana sacrifice mutations.
@@ -3749,12 +3991,8 @@ static bool _sac_mut_maybe_valid(mutation_type mut)
 
     // Vampires can't get inhibited regeneration for some reason related
     // to their existing regen silliness.
-    // Neither can deep dwarf, for obvious reasons.
-    if (mut == MUT_INHIBITED_REGENERATION
-        && you.has_mutation(MUT_VAMPIRISM))
-    {
+    if (mut == MUT_INHIBITED_REGENERATION && you.has_mutation(MUT_VAMPIRISM))
         return false;
-    }
 
     // demonspawn can't get frail if they have a robust facet
     if (you.species == SP_DEMONSPAWN && mut == MUT_FRAIL
@@ -3971,14 +4209,11 @@ static int _piety_for_skill_by_sacrifice(ability_type sacrifice)
     const sacrifice_def &sac_def = _get_sacrifice_def(sacrifice);
 
     piety_gain += _piety_for_skill(sac_def.sacrifice_skill);
-    if (sacrifice == ABIL_RU_SACRIFICE_HAND)
+    if (sacrifice == ABIL_RU_SACRIFICE_HAND
+        && species::size(you.species, PSIZE_TORSO) <= SIZE_SMALL)
     {
         // No one-handed staves for small races.
-        if (species::size(you.species, PSIZE_TORSO) <= SIZE_SMALL)
-            piety_gain += _piety_for_skill(SK_STAVES);
-        // No one-handed bows.
-        if (!you.has_innate_mutation(MUT_QUADRUMANOUS))
-            piety_gain += _piety_for_skill(SK_BOWS);
+        piety_gain += _piety_for_skill(SK_STAVES);
     }
     return piety_gain;
 }
@@ -4051,7 +4286,7 @@ int get_sacrifice_piety(ability_type sac, bool include_skill)
     {
         case ABIL_RU_SACRIFICE_HEALTH:
             if (mut == MUT_FRAIL)
-                piety_gain += 20; // -health is pretty much always quite bad.
+                piety_gain += 10; // -health is pretty much always quite bad.
             else if (mut == MUT_PHYSICAL_VULNERABILITY)
                 piety_gain += 5; // -AC is a bit worse than -EV
             break;
@@ -4062,7 +4297,7 @@ int get_sacrifice_piety(ability_type sac, bool include_skill)
                                        you.skill_rdiv(SK_SPELLCASTING, 1, 2));
             }
             else if (mut == MUT_WEAK_WILLED)
-                piety_gain += 38;
+                piety_gain += 35;
             else
                 piety_gain += 2 + _get_stat_piety(STAT_INT, 6)
                                 + you.skill_rdiv(SK_SPELLCASTING, 1, 2);
@@ -4105,11 +4340,16 @@ int get_sacrifice_piety(ability_type sac, bool include_skill)
             break;
         // words and drink cut off a lot of options if taken together
         case ABIL_RU_SACRIFICE_DRINK:
-            if (you.get_mutation_level(MUT_READ_SAFETY))
+            // less value if you already have some levels of the mutation
+            piety_gain -= 10 * you.get_mutation_level(MUT_DRINK_SAFETY);
+            // check innate mutation level to see if reading was sacrificed
+            if (you.get_innate_mutation_level(MUT_READ_SAFETY) == 2)
                 piety_gain += 10;
             break;
         case ABIL_RU_SACRIFICE_WORDS:
-            if (you.get_mutation_level(MUT_DRINK_SAFETY))
+            // less value if you already have some levels of the mutation
+            piety_gain -= 10 * you.get_mutation_level(MUT_READ_SAFETY);
+            if (you.get_innate_mutation_level(MUT_DRINK_SAFETY) == 2)
                 piety_gain += 10;
             else if (you.get_mutation_level(MUT_NO_DRINK))
                 piety_gain += 15; // extra bad for mummies
@@ -4133,17 +4373,21 @@ int get_sacrifice_piety(ability_type sac, bool include_skill)
             break;
         case ABIL_RU_SACRIFICE_EXPERIENCE:
             if (you.get_mutation_level(MUT_COWARDICE))
-                piety_gain += 12;
+                piety_gain += 6;
             // Ds are highly likely to miss at least one mutation. This isn't
             // absolutely certain, but it's very likely and they should still
             // get a bonus for the risk. Could check the exact mutation
             // schedule, but this seems too leaky.
-            // Dj are guaranteed to lose a spell each time, which is pretty sad too.
-            if (you.species == SP_DEMONSPAWN || you.species == SP_DJINNI)
-                piety_gain += 16;
+            // Dj are guaranteed to lose a spell for the first and third sac,
+            // which is pretty sad too.
+            if (you.species == SP_DEMONSPAWN
+                || you.species == SP_DJINNI && (you.get_mutation_level(MUT_INEXPERIENCED) % 2 == 0))
+            {
+                piety_gain += 10;
+            }
             break;
         case ABIL_RU_SACRIFICE_COURAGE:
-            piety_gain += 12 * you.get_mutation_level(MUT_INEXPERIENCED);
+            piety_gain += 6 * you.get_mutation_level(MUT_INEXPERIENCED);
             break;
 
         default:
@@ -4186,7 +4430,7 @@ static void _ru_expire_sacrifices()
         you.props[key].get_vector().clear();
     }
 
-    // Clear out stored sacrfiice values.
+    // Clear out stored sacrifice values.
     for (int i = 0; i < NUM_ABILITIES; ++i)
         you.sacrifice_piety[i] = 0;
 }
@@ -4352,7 +4596,7 @@ static const char* _describe_sacrifice_piety_gain(int piety_gain)
     else if (piety_gain >= 29)
         return "a major";
     else if (piety_gain >= 21)
-        return "a significant";
+        return "a medium";
     else if (piety_gain >= 13)
         return "a modest";
     else
@@ -4367,7 +4611,18 @@ static const string _piety_asterisks(int piety)
 
 static void _apply_ru_sacrifice(mutation_type sacrifice)
 {
-    perma_mutate(sacrifice, 1, "Ru sacrifice");
+    if (sacrifice == MUT_READ_SAFETY || sacrifice == MUT_DRINK_SAFETY)
+    {
+        // get the safety mutation to the cap instead of 1 level higher
+        perma_mutate(sacrifice,
+                    3 - you.get_mutation_level(sacrifice),
+                    "Ru sacrifice");
+    }
+    else
+    {
+        // regular case for other sacrifices
+        perma_mutate(sacrifice, 1, "Ru sacrifice");
+    }
     you.sacrifices[sacrifice] += 1;
 }
 
@@ -4394,13 +4649,14 @@ static void _ru_kill_skill(skill_type skill)
 
 static void _extra_sacrifice_code(ability_type sac)
 {
-    const sacrifice_def &sac_def = _get_sacrifice_def(sac);
-    if (sac_def.sacrifice == ABIL_RU_SACRIFICE_HAND)
+    switch (_get_sacrifice_def(sac).sacrifice)
+    {
+    case ABIL_RU_SACRIFICE_HAND:
     {
         auto ring_slots = species::ring_slots(you.species, true);
         equipment_type sac_ring_slot = species::sacrificial_arm(you.species);
 
-        item_def* const shield = you.slot_item(EQ_SHIELD, true);
+        item_def* const shield = you.slot_item(EQ_OFFHAND, true);
         item_def* const weapon = you.slot_item(EQ_WEAPON, true);
         item_def* const ring = you.slot_item(sac_ring_slot, true);
         int ring_inv_slot = you.equip[sac_ring_slot];
@@ -4410,8 +4666,8 @@ static void _extra_sacrifice_code(ability_type sac)
         if (shield != nullptr)
         {
             mprf("You can no longer hold %s!",
-                shield->name(DESC_YOUR).c_str());
-            unequip_item(EQ_SHIELD);
+                 shield->name(DESC_YOUR).c_str());
+            unequip_item(EQ_OFFHAND);
         }
 
         // And your two-handed weapon
@@ -4420,7 +4676,7 @@ static void _extra_sacrifice_code(ability_type sac)
             if (you.hands_reqd(*weapon) == HANDS_TWO)
             {
                 mprf("You can no longer hold %s!",
-                    weapon->name(DESC_YOUR).c_str());
+                     weapon->name(DESC_YOUR).c_str());
                 unequip_item(EQ_WEAPON);
             }
         }
@@ -4439,7 +4695,7 @@ static void _extra_sacrifice_code(ability_type sac)
             const bool can_keep = open_ring_slot != EQ_NONE;
 
             mprf("You can no longer wear %s!",
-                ring->name(DESC_YOUR).c_str());
+                 ring->name(DESC_YOUR).c_str());
             unequip_item(sac_ring_slot, true, can_keep);
             if (can_keep)
             {
@@ -4450,10 +4706,12 @@ static void _extra_sacrifice_code(ability_type sac)
                 equip_item(open_ring_slot, ring_inv_slot, false, true);
             }
         }
+        break;
     }
-    else if (sac_def.sacrifice == ABIL_RU_SACRIFICE_EXPERIENCE)
+    case ABIL_RU_SACRIFICE_EXPERIENCE:
         level_change();
-    else if (sac_def.sacrifice == ABIL_RU_SACRIFICE_SKILL)
+        break;
+    case ABIL_RU_SACRIFICE_SKILL:
     {
         uint8_t saved_skills[NUM_SKILLS];
         for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
@@ -4473,6 +4731,19 @@ static void _extra_sacrifice_code(ability_type sac)
 
         redraw_screen();
         update_screen();
+        break;
+    }
+    case ABIL_RU_SACRIFICE_FORMS:
+        if (you.form == transformation::none)
+            break;
+
+        unset_default_form();
+        if (!you.transform_uncancellable)
+            untransform(); // XXX: maybe should warn the player pre-sac?
+
+        break;
+    default:
+        break;
     }
 }
 
@@ -4642,14 +4913,11 @@ bool ru_do_sacrifice(ability_type sac)
     // Maybe this should go in _extra_sacrifice_code, but it would be
     // inconsistent for the milestone to have reduced Shields skill
     // but not the others.
-    if (sac == ABIL_RU_SACRIFICE_HAND)
+    if (sac == ABIL_RU_SACRIFICE_HAND
+        && species::size(you.species, PSIZE_TORSO) <= SIZE_SMALL)
     {
         // No one-handed staves for small races.
-        if (species::size(you.species, PSIZE_TORSO) <= SIZE_SMALL)
-            _ru_kill_skill(SK_STAVES);
-        // No one-handed bows.
-        if (!you.has_innate_mutation(MUT_QUADRUMANOUS))
-            _ru_kill_skill(SK_BOWS);
+        _ru_kill_skill(SK_STAVES);
     }
 
     mark_milestone("sacrifice", mile_text);
@@ -4702,7 +4970,7 @@ bool ru_reject_sacrifices(bool forced_rejection)
         return false;
     }
 
-    ru_reset_sacrifice_timer(false, true);
+    ru_reset_sacrifice_timer(false, forced_rejection);
     _ru_expire_sacrifices();
     simple_god_message(" will take longer to evaluate your readiness.");
     return true;
@@ -4756,7 +5024,11 @@ void ru_reset_sacrifice_timer(bool clear_timer, bool faith_penalty)
         }
     }
 
-    delay = div_rand_round((delay + added_delay) * (3 - you.faith()), 3);
+    // No faith reduction if this is due to abandoning Ru.
+    if (!you_worship(GOD_RU))
+        delay += added_delay;
+    else
+        delay = div_rand_round((delay + added_delay) * (3 - you.faith()), 3);
     if (crawl_state.game_is_sprint())
         delay /= SPRINT_MULTIPLIER;
 
@@ -4838,7 +5110,7 @@ void ru_draw_out_power()
     stop_being_held();
 
     // Escape constriction
-    you.stop_being_constricted(false);
+    you.stop_being_constricted(false, "burst");
 
     // cancel petrification/confusion/slow
     you.duration[DUR_CONF] = 0;
@@ -4958,18 +5230,17 @@ bool ru_power_leap()
         }
     }
 
-    if (!you.attempt_escape(2)) // returns true if not constricted
-        return true;
+    you.stop_being_constricted(false, "leap");
 
     if (cell_is_solid(beam.target) || monster_at(beam.target))
     {
         // XXX: try to jump somewhere nearby?
-        mpr("Something unexpectedly blocked you, preventing you from leaping!");
+        mpr("Something unexpectedly blocks you, preventing you from leaping!");
         return true;
     }
 
     move_player_to_grid(beam.target, false);
-    apply_barbs_damage();
+    player_did_deliberate_movement();
 
     crawl_state.cancel_cmd_again();
     crawl_state.cancel_cmd_repeat();
@@ -5267,13 +5538,13 @@ bool uskayaw_line_pass()
     }
 
     if (monster_at(beam.target))
-        mpr("Something unexpectedly blocked you, preventing you from passing!");
+        mpr("Something unexpectedly blocks you, preventing you from passing!");
     else
     {
+        you.stop_being_constricted(false, "dance");
         line_pass.fire();
-        you.stop_being_constricted(false);
         move_player_to_grid(beam.target, false);
-        apply_barbs_damage();
+        player_did_deliberate_movement();
     }
 
     crawl_state.cancel_cmd_again();
@@ -5353,16 +5624,18 @@ spret uskayaw_grand_finale(bool fail)
 
     ASSERT(mons);
 
+    string attack_punctuation = attack_strength_punctuation(mons->hit_points);
+
     // kill the target
     if (mons->type == MONS_ROYAL_JELLY && !mons->is_summoned())
     {
         // need to do this here, because react_to_damage is never called
-        mprf("%s explodes violently into a cloud of jellies!",
-                                        mons->name(DESC_THE, false).c_str());
+        mprf("%s explodes violently into a cloud of jellies%s",
+                                        mons->name(DESC_THE, false).c_str(), attack_punctuation.c_str());
         trj_spawn_fineff::schedule(&you, mons, mons->pos(), mons->hit_points);
     }
     else
-        mprf("%s explodes violently!", mons->name(DESC_THE, false).c_str());
+        mprf("%s explodes violently%s", mons->name(DESC_THE, false).c_str(), attack_punctuation.c_str());
     mons->flags |= MF_EXPLODE_KILL;
     if (!mons->is_insubstantial())
     {
@@ -5375,7 +5648,8 @@ spret uskayaw_grand_finale(bool fail)
     if (mons->alive())
         monster_die(*mons, KILL_YOU, NON_MONSTER, false);
 
-    if (!mons->alive())
+    // a lost soul may sneak in here
+    if (!mons->alive() && !monster_at(beam.target))
         move_player_to_grid(beam.target, false);
     else
         mpr("You spring back to your original position.");
@@ -5526,7 +5800,7 @@ static void _transfer_drain_nearby(coord_def destination)
     for (adjacent_iterator it(destination); it; ++it)
     {
         monster* mon = monster_at(*it);
-        if (!mon || god_protects(mon))
+        if (!mon || god_protects(*mon) || mons_is_firewood(*mon))
             continue;
 
         const int dur = random_range(60, 150);
@@ -5582,7 +5856,8 @@ spret hepliaklqana_transference(bool fail)
 
     const bool victim_immovable
         = victim && (mons_is_tentacle_or_tentacle_segment(victim->type)
-                     || victim->is_stationary());
+                     || victim->is_stationary()
+                     || mons_is_projectile(victim->type));
     if (victim_visible && victim_immovable)
     {
         mpr("You can't transfer that.");
@@ -5734,7 +6009,7 @@ bool wu_jian_can_wall_jump_in_principle(const coord_def& target)
 {
     if (!have_passive(passive_t::wu_jian_wall_jump)
         || !feat_can_wall_jump_against(env.grid(target))
-        || you.is_stationary()
+        || !you.is_motile()
         || you.digging)
     {
         return false;
@@ -5820,7 +6095,9 @@ bool wu_jian_do_wall_jump(coord_def targ)
     auto wall_jump_direction = (you.pos() - targ).sgn();
     auto wall_jump_landing_spot = (you.pos() + wall_jump_direction
                                    + wall_jump_direction);
-    if (!check_moveto(wall_jump_landing_spot, "wall jump"))
+    if ((wu_jian_wall_jump_triggers_attacks(wall_jump_landing_spot)
+         && !wielded_weapon_check(you.weapon())
+        || !check_moveto(wall_jump_landing_spot, "wall jump")))
     {
         you.turn_is_over = false;
         return false;
@@ -5829,7 +6106,7 @@ bool wu_jian_do_wall_jump(coord_def targ)
     auto initial_position = you.pos();
     move_player_to_grid(wall_jump_landing_spot, false);
     wu_jian_wall_jump_effects();
-    remove_water_hold();
+    you.clear_far_engulf(false, true);
 
     int wall_jump_modifier = (you.attribute[ATTR_SERPENTS_LASH] != 1) ? 2
                                                                       : 1;
@@ -5891,8 +6168,7 @@ spret wu_jian_wall_jump_ability()
         return spret::abort;
     }
 
-    if (!you.attempt_escape())
-        return spret::fail;
+    you.stop_being_constricted(false, "jump");
 
     // query for location:
     dist beam;
@@ -5938,7 +6214,7 @@ spret wu_jian_wall_jump_ability()
     crawl_state.cancel_cmd_again();
     crawl_state.cancel_cmd_repeat();
 
-    apply_barbs_damage();
+    player_did_deliberate_movement();
     return spret::success;
 }
 
@@ -6019,8 +6295,11 @@ spret okawaru_duel(const coord_def& target, bool fail)
     behaviour_event(mons, ME_ALERT, &you);
     mons->props[OKAWARU_DUEL_TARGET_KEY] = true;
     mons->props[OKAWARU_DUEL_CURRENT_KEY] = true;
+    mons->stop_being_constricted(true);
     mons->set_transit(level_id(BRANCH_ARENA));
     mons->destroy_inventory();
+    if (mons_is_elven_twin(mons))
+        elven_twin_died(mons, false, KILL_YOU, MID_PLAYER);
     monster_cleanup(mons);
 
     stop_delay(true);
@@ -6056,6 +6335,7 @@ void okawaru_end_duel()
             {
                 mi->props.erase(OKAWARU_DUEL_CURRENT_KEY);
                 mi->props[OKAWARU_DUEL_ABANDONED_KEY] = true;
+                mi->stop_being_constricted(true);
                 mi->set_transit(current_level_parent());
                 mi->destroy_inventory();
                 monster_cleanup(*mi);

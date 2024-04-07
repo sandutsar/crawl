@@ -15,6 +15,7 @@
 #include "dgn-event.h"
 #include "dgn-overview.h"
 #include "dungeon.h"
+#include "god-companions.h" // Beogh Blood for Blood markers
 #include "item-prop.h"
 #include "level-state-type.h"
 #include "libutil.h"
@@ -109,9 +110,6 @@ bool show_type::is_cleanable_monster() const
 
 static void _update_feat_at(const coord_def &gp)
 {
-    if (!you.see_cell(gp))
-        return;
-
     dungeon_feature_type feat = env.grid(gp);
     unsigned colour = env.grid_colours(gp);
     trap_type trap = TRAP_UNASSIGNED;
@@ -129,7 +127,7 @@ static void _update_feat_at(const coord_def &gp)
     if (silenced(gp))
         env.map_knowledge(gp).flags |= MAP_SILENCED;
 
-    if (liquefied(gp, false))
+    if (liquefied(gp, true))
         env.map_knowledge(gp).flags |= MAP_LIQUEFIED;
 
     if (orb_haloed(gp))
@@ -148,6 +146,9 @@ static void _update_feat_at(const coord_def &gp)
         else if (testbits(env.pgrid(gp), FPROP_SANCTUARY_2))
             env.map_knowledge(gp).flags |= MAP_SANCTUARY_2;
     }
+
+    if (is_blasphemy(gp))
+        env.map_knowledge(gp).flags |= MAP_BLASPHEMY;
 
     if (you.get_beholder(gp))
         env.map_knowledge(gp).flags |= MAP_WITHHELD;
@@ -175,9 +176,19 @@ static void _update_feat_at(const coord_def &gp)
     // so we can properly recolor both.
     if (env.level_state & LSTATE_ICY_WALL
         && (is_icecovered(gp)
-            || !feat_is_wall(feat) && count_adjacent_icy_walls(gp)))
+            || !feat_is_wall(feat)
+                && count_adjacent_icy_walls(gp)
+                && you.see_cell_no_trans(gp)))
     {
         env.map_knowledge(gp).flags |= MAP_ICY;
+    }
+
+    // XXX: This feels like is should be more separated somehow...
+    if (you.religion == GOD_BEOGH
+        && you.props.exists(BEOGH_RES_PIETY_NEEDED_KEY)
+        && tile_has_valid_bfb_corpse(gp))
+    {
+        env.map_knowledge(gp).flags |= MAP_BFB_CORPSE;
     }
 
     if (emphasise(gp))
@@ -214,12 +225,14 @@ static show_item_type _item_to_show_code(const item_def &item)
     case OBJ_RODS:       return SHOW_ITEM_ROD;
 #endif
     case OBJ_MISCELLANY: return SHOW_ITEM_MISCELLANY;
+    case OBJ_TALISMANS:  return SHOW_ITEM_TALISMAN;
     case OBJ_CORPSES:
         if (item.sub_type == CORPSE_SKELETON)
             return SHOW_ITEM_SKELETON;
         else
             return SHOW_ITEM_CORPSE;
     case OBJ_GOLD:       return SHOW_ITEM_GOLD;
+    case OBJ_GEMS:       return SHOW_ITEM_GEM;
     case OBJ_DETECTED:   return SHOW_ITEM_DETECTED;
     case OBJ_RUNES:      return SHOW_ITEM_RUNE;
     default:             return SHOW_ITEM_ORB; // bad item character
@@ -418,7 +431,7 @@ static void _handle_unseen_mons(monster* mons, uint32_t hash_ind)
  *
  * This function updates the map_knowledge grid with a monster_info if relevant.
  * If the monster is not currently visible to the player, the map knowledge will
- * be upated with a disturbance if necessary.
+ * be updated with a disturbance if necessary.
  * @param mons  The monster at the relevant location.
 **/
 static void _update_monster(monster* mons)
@@ -449,10 +462,6 @@ static void _update_monster(monster* mons)
     // its invis indicator due to going unseen) will be erased.
     if (!you.turn_is_over)
         mons->went_unseen_this_turn = false;
-
-    // Being submerged is not the same as invisibility.
-    if (mons->submerged())
-        return;
 
     // Ripple effect?
     // Should match directn.cc's _mon_exposed
@@ -499,28 +508,33 @@ void show_update_at(const coord_def &gp, layers_type layers)
         return;
     else
         env.map_knowledge(gp).clear_monster();
+
+    force_show_update_at(gp, layers);
+}
+
+void force_show_update_at(const coord_def &gp, layers_type layers)
+{
     // The sequence is grid, items, clouds, monsters.
     // XX it actually seems to be grid monsters clouds items??
     _update_feat_at(gp);
+    if (!in_bounds(gp))
+        return;
 
-    if (in_bounds(gp))
+    if (layers & LAYER_MONSTERS)
     {
-        if (layers & LAYER_MONSTERS)
-        {
-            monster* mons = monster_at(gp);
-            if (mons && mons->alive())
-                _update_monster(mons);
-            else if (env.map_knowledge(gp).flags & MAP_INVISIBLE_UPDATE)
-                _mark_invisible_at(gp);
-        }
-
-        if (layers & LAYER_CLOUDS)
-            if (cloud_struct* cloud = cloud_at(gp))
-                _update_cloud(*cloud);
-
-        if (layers & LAYER_ITEMS)
-            update_item_at(gp);
+        monster* mons = monster_at(gp);
+        if (mons && mons->alive())
+            _update_monster(mons);
+        else if (env.map_knowledge(gp).flags & MAP_INVISIBLE_UPDATE)
+            _mark_invisible_at(gp);
     }
+
+    if (layers & LAYER_CLOUDS)
+        if (cloud_struct* cloud = cloud_at(gp))
+            _update_cloud(*cloud);
+
+    if (layers & LAYER_ITEMS)
+        update_item_at(gp);
 }
 
 void show_init(layers_type layers)

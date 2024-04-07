@@ -86,7 +86,7 @@ enum tag_minor_version
     TAG_MINOR_ABIL_GOD_FIXUP,      // Movement of some non-god-specific abils.
     TAG_MINOR_NEMELEX_DUNGEONS,    // Make nemelex not give/track decks of dungeons.
     TAG_MINOR_DEMONSPAWN,          // Save compat wrt demonspawn enemies.
-    TAG_MINOR_EVENT_TIMERS,        // "Every 20 turn" effects are less determinstic.
+    TAG_MINOR_EVENT_TIMERS,        // "Every 20 turn" effects are less deterministic.
     TAG_MINOR_EVENT_TIMER_FIX,     // Correct event timers in transferred games
     TAG_MINOR_MONINFO_ENERGY,      // Energy usage in monster_info
     TAG_MINOR_BOOK_ID,             // Track spellbooks you've identified
@@ -263,6 +263,47 @@ enum tag_minor_version
     TAG_MINOR_BOOK_UNID,           // Remove book ID.
     TAG_MINOR_EVOLUTION_XP,        // Invert the meaning of ATTR_EVOL_XP.
     TAG_MINOR_ZOT_ENTRY_FIXUP,     // Fixup Zot branch entry for shorter Depths
+    TAG_MINOR_VORTEX_POWER,        // Store polar vortex power on cast.
+    TAG_MINOR_CUT_STRICT_NEUTRAL,  // Merge strict_neutral with good_neutral
+    TAG_MINOR_SPLIT_HELL_GATE,     // Split "enter" and "leave branch" features.
+    TAG_MINOR_MOSTLY_REMOVE_AMMO,  // Remove most aspects of launcher ammo.
+    TAG_MINOR_METEORAN_ENUM,       // Fix misordered enums.
+    TAG_MINOR_MY_ENUM,             // Fix more misordered enums.
+    TAG_MINOR_WAND_SETS,           // Initialise wand generation sets.
+    TAG_MINOR_ABYSS_SEVEN,         // Deepen the abyss to 7 floors.
+    TAG_MINOR_REMOVE_CT_SKILLS,    // Remove the very long-unused ct skills.
+    TAG_MINOR_MERGE_RANGED,        // Merge all ranged weapon skills together.
+    TAG_MINOR_RECOMPRESS_BADMUTS,  // Reduce some more mutations to 2 levels.
+    TAG_MINOR_SPAWN_RATE,          // Remove the env.spawn_random_rate field.
+    TAG_MINOR_REMOVE_AK,           // Remove Abyssal Knight.
+    TAG_MINOR_BUTTERSUMMONS,       // Alternate ?butt with ?summ, not ?fog.
+    TAG_MINOR_WU_ABILITIES,        // Make Lunge and Whirlwind Abil, not Invok
+    TAG_MINOR_MORE_WAYPOINTS,      // Increase the number of allowed waypoints.
+    TAG_MINOR_GENERATED_MISC,      // Track generated misc item types.
+    TAG_MINOR_SAVE_TERRAIN_FLAVOUR, // Save flavour in terrain-change markers.
+    TAG_MINOR_DJ_SPLIT,            // Make Djinn use all magic skills.
+    TAG_MINOR_TALISMANS,           // Add talismans and indefinite transforms.
+    TAG_MINOR_SHAPESHIFTING,       // Add Shapeshifting skill.
+    TAG_MINOR_LANGUAGE_FIX,        // Remove some outdated language.
+    TAG_MINOR_SLENGU,              // Split tengu mutations.
+    TAG_MINOR_GLASS_EYES,          // Fixup paralysis gaze to vitrifying gaze.
+    TAG_MINOR_SAVE_TALISMANS,      // Store the in-use talisman.
+    TAG_MINOR_NO_SPECIAL_ENERGY,   // Remove some unused monster energy types.
+    TAG_MINOR_MON_SH_INFO,         // Store SH in mon-info.
+    TAG_MINOR_RAMPAGE_HEAL,        // Adjust Armataur mutations for healpage.
+    TAG_MINOR_GEMS,                // Add gems.
+    TAG_MINOR_ALCHEMY_MERGER,      // Poison magic and transmuations merged.
+    TAG_MINOR_UNTRAVEL_ALLY_PACE,  // Cut pace travel to slowest ally setting
+    TAG_MINOR_REMOVE_MONSTER_XP,   // Remove the experience member from monster
+    TAG_MINOR_NO_INCREMENTAL_RECALL, // Remove incremental recall and make instant again
+    TAG_MINOR_APOSTLE_DATA,        // Convert apostles to using custom structs instead of props
+    TAG_MINOR_XP_CONTRIBUTE_FIXUP, // Removes the 2x multiplier for player XP contribution
+    TAG_MINOR_GHOST_UMBRAS,        // Allow ghost demons to have umbras.
+    TAG_MINOR_NO_CONSTRICTION_DUR, // Remove duration parameter from constriction tracking
+    TAG_MINOR_NEW_DRACONIAN_BREATH, // Add charges to draconian breaths, revamp effects
+    TAG_MINOR_COGLIN_NO_JEWELLERY, // Remove all jewellery from Coglins
+    TAG_MINOR_TALISMANS_SEEN,      // Keep track of seen talismans
+    TAG_MINOR_FIX_APOSTLE_DAMAGE,  // Fix damage tracking of banished apostles
 #endif
     NUM_TAG_MINORS,
     TAG_MINOR_VERSION = NUM_TAG_MINORS - 1
@@ -279,6 +320,7 @@ const set<int> bones_minor_tags =
          TAG_MINOR_BOOL_FLIGHT,
          TAG_MINOR_POSITIONAL_MAGIC,
          TAG_MINOR_GHOST_MAGIC,
+         TAG_MINOR_GHOST_UMBRAS,
 #endif
         };
 

@@ -18,6 +18,10 @@ const int UMBRA_TO_HIT_MALUS = -3;
 const int CONFUSION_TO_HIT_MALUS = -5;
 const int TRANSLUCENT_SKIN_TO_HIT_MALUS = -2;
 
+const int BULLSEYE_TO_HIT_DIV = 6;
+
+const int REPEL_MISSILES_EV_BONUS = 15;
+
 class attack
 {
 // Public Properties
@@ -40,10 +44,7 @@ public:
     int     to_hit;
     int     damage_done;
     int     special_damage; // TODO: We'll see if we can remove this
-    int     aux_damage;     // TOOD: And this too
-
-    int     min_delay;
-    int     final_attack_delay;
+    int     aux_damage;     // TODO: And this too
 
     beam_type special_damage_flavour;
 
@@ -61,13 +62,9 @@ public:
     attack_flavour  attk_flavour;
     int             attk_damage;
 
-    item_def        *weapon;
+    const item_def  *weapon;
     brand_type      damage_brand;
     skill_type      wpn_skill;
-
-    // Attacker's shield, stored so we can reference it and determine
-    // the attacker's combat effectiveness
-    item_def  *shield;
 
     // If weapon is an artefact, its properties.
     artefact_properties_t art_props;
@@ -83,13 +80,7 @@ public:
     string     special_damage_message;
     string     aux_attack, aux_verb;
 
-    // Combined to-hit penalty from armour and shield.
-    int             attacker_armour_tohit_penalty;
-    int             attacker_shield_tohit_penalty;
-
     item_def        *defender_shield;
-
-    bool      fake_chaos_attack;
 
     bool simu;
 
@@ -133,13 +124,14 @@ protected:
 
     /* Combat Calculations */
     virtual bool using_weapon() const = 0;
-    virtual int weapon_damage() = 0;
+    virtual int weapon_damage() const = 0;
+    int adjusted_weapon_damage() const;
     virtual int get_weapon_plus();
-    virtual int calc_base_unarmed_damage();
+    virtual int calc_base_unarmed_damage() const;
     virtual int calc_mon_to_hit_base() = 0;
     virtual int apply_damage_modifiers(int damage) = 0;
+    int apply_rev_penalty(int damage) const;
     virtual int calc_damage();
-    void calc_encumbrance_penalties(bool random);
     int lighting_effects();
     int test_hit(int to_hit, int ev, bool randomise_ev);
     int apply_defender_ac(int damage, int damage_max = 0,
@@ -165,10 +157,12 @@ protected:
     bool distortion_affects_defender();
     void antimagic_affects_defender(int pow);
     void pain_affects_defender();
-    void chaos_affects_defender();
     brand_type random_chaos_brand();
     void drain_defender();
     void drain_defender_speed();
+    void maybe_trigger_jinxbite();
+    void maybe_trigger_fugue_wail(const coord_def pos);
+    void maybe_trigger_autodazzler();
 
     virtual int inflict_damage(int dam, beam_type flavour = NUM_BEAMS,
                                bool clean = false);
@@ -182,6 +176,8 @@ protected:
 
     void stab_message();
 
+    void handle_noise(const coord_def & pos);
+
     string atk_name(description_level_type desc);
     string def_name(description_level_type desc);
     string wep_name(description_level_type desc = DESC_YOUR,
@@ -190,12 +186,11 @@ protected:
     attack_flavour random_chaos_attack_flavour();
     bool apply_poison_damage_brand();
 
-    virtual int  player_stat_modify_damage(int damage);
-    virtual int  player_apply_weapon_skill(int damage);
-    virtual int  player_apply_fighting_skill(int damage, bool aux);
     virtual int  player_apply_misc_modifiers(int damage);
     virtual int  player_apply_slaying_bonuses(int damage, bool aux);
-    virtual int  player_apply_final_multipliers(int damage);
+    virtual int  player_apply_final_multipliers(int damage,
+                                                bool /*aux*/ = false);
+    virtual int player_apply_postac_multipliers(int damage);
 
     virtual void player_exercise_combat_skills();
 
@@ -203,6 +198,9 @@ protected:
     virtual int  player_stab_weapon_bonus(int damage);
     virtual int  player_stab(int damage);
     virtual void player_stab_check();
+
+private:
+    actor &stat_source() const;
 };
 
 string attack_strength_punctuation(int dmg);

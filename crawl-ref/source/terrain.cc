@@ -31,6 +31,7 @@
 #include "items.h"
 #include "level-state-type.h"
 #include "libutil.h"
+#include "map-knowledge.h" // set_terrain_visible
 #include "mapmark.h"
 #include "message.h"
 #include "mon-behv.h"
@@ -111,9 +112,11 @@ bool feat_is_staircase(dungeon_feature_type feat)
     if (feat_is_stone_stair(feat))
         return true;
 
-    // All branch entries/exits are staircases, except for Zot and Vaults entry.
+    // All branch entries/exits are staircases, except for Zot, Hell & Vaults.
     if (feat == DNGN_ENTER_VAULTS
         || feat == DNGN_EXIT_VAULTS
+        || feat == DNGN_ENTER_HELL || feat == DNGN_EXIT_HELL
+        || feat_is_hell_subbranch_exit(feat)
         || feat == DNGN_ENTER_ZOT
         || feat == DNGN_EXIT_ZOT)
     {
@@ -123,6 +126,23 @@ bool feat_is_staircase(dungeon_feature_type feat)
     return feat_is_branch_entrance(feat)
            || feat_is_branch_exit(feat)
            || feat == DNGN_ABYSSAL_STAIR;
+}
+
+/** Is this the exit from a sub-branch of Hell?
+ */
+bool feat_is_hell_subbranch_exit(dungeon_feature_type feat)
+{
+    static bool init, cached[NUM_FEATURES+1];
+    if (!init)
+    {
+        for (branch_iterator it; it; ++it)
+        {
+            if (is_hell_subbranch(it->id))
+                cached[it->exit_stairs] = true;
+        }
+        init = true;
+    }
+    return cached[feat];
 }
 
 /**
@@ -148,9 +168,6 @@ bool feat_is_staircase(dungeon_feature_type feat)
  */
 FEATFN_MEMOIZED(feat_is_branch_entrance, feat)
 {
-    if (feat == DNGN_ENTER_HELL)
-        return false;
-
     for (branch_iterator it; it; ++it)
     {
         if (it->entry_stairs == feat
@@ -167,9 +184,6 @@ FEATFN_MEMOIZED(feat_is_branch_entrance, feat)
  */
 FEATFN_MEMOIZED(feat_is_branch_exit, feat)
 {
-    if (feat == DNGN_ENTER_HELL || feat == DNGN_EXIT_HELL)
-        return false;
-
     for (branch_iterator it; it; ++it)
     {
         if (it->exit_stairs == feat
@@ -254,9 +268,7 @@ bool feat_is_travelable_stair(dungeon_feature_type feat)
     return feat_is_stone_stair(feat)
            || feat_is_escape_hatch(feat)
            || feat_is_branch_entrance(feat)
-           || feat_is_branch_exit(feat)
-           || feat == DNGN_ENTER_HELL
-           || feat == DNGN_EXIT_HELL;
+           || feat_is_branch_exit(feat);
 }
 
 /** Is this feature an escape hatch?
@@ -273,7 +285,8 @@ bool feat_is_escape_hatch(dungeon_feature_type feat)
 bool feat_is_gate(dungeon_feature_type feat)
 {
     if (feat_is_portal_entrance(feat)
-        || feat_is_portal_exit(feat))
+        || feat_is_portal_exit(feat)
+        || feat_is_hell_subbranch_exit(feat))
     {
         return true;
     }
@@ -323,18 +336,14 @@ command_type feat_stair_direction(dungeon_feature_type feat)
     }
 
     if (feat_is_altar(feat))
-        return CMD_GO_UPSTAIRS; // arbitrary; consistent with shops
+        return CMD_GO_DOWNSTAIRS; // arbitrary; consistent with shops
 
     switch (feat)
     {
-    case DNGN_ENTER_HELL:
-        return player_in_hell() ? CMD_GO_UPSTAIRS : CMD_GO_DOWNSTAIRS;
-
     case DNGN_STONE_STAIRS_UP_I:
     case DNGN_STONE_STAIRS_UP_II:
     case DNGN_STONE_STAIRS_UP_III:
     case DNGN_ESCAPE_HATCH_UP:
-    case DNGN_ENTER_SHOP:
     case DNGN_EXIT_HELL:
         return CMD_GO_UPSTAIRS;
 
@@ -350,6 +359,7 @@ command_type feat_stair_direction(dungeon_feature_type feat)
     case DNGN_EXIT_PANDEMONIUM:
     case DNGN_TRANSIT_PANDEMONIUM:
     case DNGN_TRANSPORTER:
+    case DNGN_ENTER_SHOP:
         return CMD_GO_DOWNSTAIRS;
 
     default:
@@ -401,7 +411,7 @@ bool feat_has_solid_floor(dungeon_feature_type feat)
  */
 bool feat_has_dry_floor(dungeon_feature_type feat)
 {
-    return feat_has_solid_floor(feat) && !feat_is_water(feat);
+    return feat_has_solid_floor(feat) && !feat_is_water(feat) && feat != DNGN_MUD;
 }
 
 /** Is this feature a variety of door?
@@ -461,7 +471,9 @@ bool cell_is_runed(const coord_def &p)
  */
 bool feat_is_statuelike(dungeon_feature_type feat)
 {
-    return feat == DNGN_ORCISH_IDOL || feat == DNGN_GRANITE_STATUE;
+    return feat == DNGN_ORCISH_IDOL
+      || feat == DNGN_GRANITE_STATUE
+      || feat == DNGN_METAL_STATUE;
 }
 
 /** Is this feature permanent, unalterable rock?
@@ -510,13 +522,6 @@ bool feat_is_water(dungeon_feature_type feat)
            || feat == DNGN_OPEN_SEA
            || feat == DNGN_TOXIC_BOG
            || feat == DNGN_MANGROVE;
-}
-
-/** Does this feature have enough water to keep water-only monsters alive in it?
- */
-bool feat_is_watery(dungeon_feature_type feat)
-{
-    return feat_is_water(feat) || feat == DNGN_FOUNTAIN_BLUE;
 }
 
 /** Is this feature a kind of lava?
@@ -637,12 +642,24 @@ bool feat_is_bidirectional_portal(dungeon_feature_type feat)
 {
     return get_feature_dchar(feat) == DCHAR_ARCH
            && feat_stair_direction(feat) != CMD_NO_CMD
+           && !feat_is_hell_subbranch_exit(feat)
            && feat != DNGN_ENTER_ZOT
            && feat != DNGN_EXIT_ZOT
            && feat != DNGN_ENTER_VAULTS
            && feat != DNGN_EXIT_VAULTS
            && feat != DNGN_EXIT_HELL
            && feat != DNGN_ENTER_HELL;
+}
+/** Will this stair-like feature stick around after the player stops using it? (In descent mode?)
+ */
+bool feat_is_descent_exitable(dungeon_feature_type feat)
+{
+    return feat == DNGN_EXIT_DUNGEON
+           || feat == DNGN_EXIT_HELL
+           || feat == DNGN_EXIT_COCYTUS
+           || feat == DNGN_EXIT_GEHENNA
+           || feat == DNGN_EXIT_TARTARUS
+           || feat == DNGN_EXIT_DIS;
 }
 
 /** Is this feature a type of fountain?
@@ -653,6 +670,14 @@ bool feat_is_fountain(dungeon_feature_type feat)
            || feat == DNGN_FOUNTAIN_SPARKLING
            || feat == DNGN_FOUNTAIN_BLOOD
            || feat == DNGN_DRY_FOUNTAIN;
+}
+
+/** Is this feature a pile of food?
+ */
+bool feat_is_food(dungeon_feature_type feat)
+{
+    return feat == DNGN_CACHE_OF_FRUIT
+           || feat == DNGN_CACHE_OF_MEAT;
 }
 
 /** Is this feature non-solid enough that you can reach past it?
@@ -855,6 +880,17 @@ int count_adjacent_slime_walls(const coord_def &pos)
     return count;
 }
 
+int slime_wall_corrosion(actor* act)
+{
+    ASSERT(act);
+
+    if (actor_slime_wall_immune(act))
+        return 0;
+
+    return count_adjacent_slime_walls(act->pos()) * 4;
+}
+
+// slime wall damage under Jiyva's oozemancy; this should only affect monsters
 void slime_wall_damage(actor* act, int delay)
 {
     ASSERT(act);
@@ -866,32 +902,17 @@ void slime_wall_damage(actor* act, int delay)
     if (!walls)
         return;
 
-    // Consider pulling out damage from splash_with_acid() into
-    // its own function and calling that.
     const int strength = div_rand_round(3 * walls * delay, BASELINE_DELAY);
-    const int base_dam = act->is_player() ? roll_dice(4, strength) : roll_dice(2, 4);
+    const int base_dam = roll_dice(2, strength);
     const int dam = resist_adjust_damage(act, BEAM_ACID, base_dam);
-    if (act->is_player())
+    if (dam > 0 && you.see_cell_no_trans(act->pos()))
     {
-        mprf("You are splashed with acid%s%s",
-             dam > 0 ? "" : " but take no damage",
-             attack_strength_punctuation(dam).c_str());
-        ouch(dam, KILLED_BY_ACID, MID_NOBODY);
-    }
-    else if (dam > 0 && you.see_cell_no_trans(act->pos()))
-    {
-        const actor *agent = you.duration[DUR_OOZEMANCY] ? &you : nullptr;
         const char *verb = act->is_icy() ? "melt" : "burn";
         mprf((walls > 1) ? "The walls %s %s!" : "The wall %ss %s!",
               verb, act->name(DESC_THE).c_str());
-        act->hurt(agent, dam, BEAM_ACID);
+        act->hurt(&you, dam, BEAM_ACID);
         if (act->alive())
-        {
-            if (agent)
-                behaviour_event(act->as_monster(), ME_WHACK, agent, agent->pos());
-            else
-                behaviour_event(act->as_monster(), ME_DISTURB, 0, act->pos());
-        }
+            behaviour_event(act->as_monster(), ME_WHACK, &you, you.pos());
     }
 }
 
@@ -931,7 +952,7 @@ FEATFN_MEMOIZED(feat_suppress_blood, feat)
     if (feat_is_tree(feat))
         return true;
 
-    if (feat == DNGN_DRY_FOUNTAIN)
+    if (feat == DNGN_DRY_FOUNTAIN || feat == DNGN_RUNELIGHT)
         return true;
 
     // covers shops and altars
@@ -1259,7 +1280,9 @@ void dungeon_terrain_changed(const coord_def &pos,
                              bool preserve_features,
                              bool preserve_items,
                              bool temporary,
-                             bool wizmode)
+                             bool wizmode,
+                             unsigned short flv_nfeat,
+                             unsigned short flv_nfeat_idx)
 {
     if (env.grid(pos) == nfeat)
         return;
@@ -1286,9 +1309,8 @@ void dungeon_terrain_changed(const coord_def &pos,
             unnotice_feature(level_pos(level_id::current(), pos));
 
         env.grid(pos) = nfeat;
-        // Reset feature tile
-        tile_env.flv(pos).feat = 0;
-        tile_env.flv(pos).feat_idx = 0;
+        tile_env.flv(pos).feat = flv_nfeat;
+        tile_env.flv(pos).feat_idx = flv_nfeat_idx;
 
         if (is_notable_terrain(nfeat) && you.see_cell(pos))
             seen_notable_thing(nfeat, pos);
@@ -1664,16 +1686,10 @@ bool slide_feature_over(const coord_def &src, coord_def preferred_dest,
  */
 void fall_into_a_pool(dungeon_feature_type terrain)
 {
-    if (terrain == DNGN_DEEP_WATER)
+    if (terrain == DNGN_DEEP_WATER && (you.can_water_walk()
+                                       || form_can_swim()))
     {
-        if (you.can_water_walk() || form_likes_water())
-            return;
-
-        if (species::likes_water(you.species) && !you.transform_uncancellable)
-        {
-            emergency_untransform();
-            return;
-        }
+        return;
     }
 
     mprf("You fall into the %s!",
@@ -1925,6 +1941,8 @@ void set_terrain_changed(const coord_def p)
 
     if (env.grid(p) == DNGN_SLIMY_WALL)
         env.level_state |= LSTATE_SLIMY_WALL;
+    if (env.grid(p) == DNGN_PASSAGE_OF_GOLUBRIA)
+        env.level_state |= LSTATE_GOLUBRIA;
     else if (env.grid(p) == DNGN_OPEN_DOOR)
     {
         // Restore colour from door-change markers
@@ -1979,6 +1997,10 @@ bool is_boring_terrain(dungeon_feature_type feat)
         return true;
     }
 
+    // These were DNGN_ENTER_HELL, but would never be the first you see.
+    if (feat_is_hell_subbranch_exit(feat))
+        return true;
+
     // Only note the first entrance to the Abyss/Pan/Hell
     // which is found.
     if ((feat == DNGN_ENTER_ABYSS || feat == DNGN_ENTER_PANDEMONIUM
@@ -2005,9 +2027,10 @@ dungeon_feature_type orig_terrain(coord_def pos)
 }
 
 void temp_change_terrain(coord_def pos, dungeon_feature_type newfeat, int dur,
-                         terrain_change_type type, const monster* mon)
+                         terrain_change_type type, int mid)
 {
     dungeon_feature_type old_feat = env.grid(pos);
+    tile_flavour old_flv = tile_env.flv(pos);
     for (map_marker *marker : env.markers.get_markers_at(pos))
     {
         if (marker->get_type() == MAT_TERRAIN_CHANGE)
@@ -2023,16 +2046,14 @@ void temp_change_terrain(coord_def pos, dungeon_feature_type newfeat, int dur,
                     if (tmarker->duration < dur)
                     {
                         tmarker->duration = dur;
-                        if (mon)
-                            tmarker->mon_num = mon->mid;
+                        tmarker->mon_num = mid;
                     }
                 }
                 else
                 {
                     tmarker->new_feature = newfeat;
                     tmarker->duration = dur;
-                    if (mon)
-                        tmarker->mon_num = mon->mid;
+                    tmarker->mon_num = mid;
                 }
                 // ensure that terrain change happens. Sometimes a terrain
                 // change marker can get stuck; this allows re-doing such
@@ -2041,7 +2062,11 @@ void temp_change_terrain(coord_def pos, dungeon_feature_type newfeat, int dur,
                 return;
             }
             else
+            {
                 old_feat = tmarker->old_feature;
+                old_flv.feat = tmarker->flv_old_feature;
+                old_flv.feat_idx = tmarker->flv_old_feature_idx;
+            }
         }
     }
 
@@ -2050,10 +2075,10 @@ void temp_change_terrain(coord_def pos, dungeon_feature_type newfeat, int dur,
     if (env.grid(pos) == newfeat && newfeat == old_feat)
         return;
 
-    int col = env.grid_colours(pos);
     map_terrain_change_marker *marker =
-        new map_terrain_change_marker(pos, old_feat, newfeat, dur, type,
-                                      mon ? mon->mid : 0, col);
+        new map_terrain_change_marker(pos, old_feat, newfeat, old_flv.feat,
+                                      old_flv.feat_idx, dur, type, mid,
+                                      env.grid_colours(pos));
     env.markers.add(marker);
     env.markers.clear_need_activate();
     dungeon_terrain_changed(pos, newfeat, false, true, true);
@@ -2098,8 +2123,20 @@ static bool _revert_terrain_to(coord_def pos, dungeon_feature_type feat)
     env.grid(pos) = newfeat;
     set_terrain_changed(pos);
 
+    tileidx_t old_floortile = tile_env.flv(pos).floor;
+    tileidx_t old_floor_idx = tile_env.flv(pos).floor_idx;
+
     tile_clear_flavour(pos);
     tile_init_flavour(pos);
+
+    // respect vault FTILE directives
+    if (newfeat == DNGN_FLOOR)
+    {
+        if (old_floortile)
+            tile_env.flv(pos).floor = old_floortile;
+        if (old_floor_idx)
+            tile_env.flv(pos).floor_idx = old_floor_idx;
+    }
 
     return true;
 }
@@ -2107,6 +2144,8 @@ static bool _revert_terrain_to(coord_def pos, dungeon_feature_type feat)
 bool revert_terrain_change(coord_def pos, terrain_change_type ctype)
 {
     dungeon_feature_type newfeat = DNGN_UNSEEN;
+    unsigned short newfeat_flv = 0;
+    unsigned short newfeat_flv_idx = 0;
     int colour = BLACK;
 
     for (map_marker *marker : env.markers.get_markers_at(pos))
@@ -2122,6 +2161,10 @@ bool revert_terrain_change(coord_def pos, terrain_change_type ctype)
                     colour = tmarker->colour;
                 if (!newfeat)
                     newfeat = tmarker->old_feature;
+                if (!newfeat_flv)
+                    newfeat_flv = tmarker->flv_old_feature;
+                if (!newfeat_flv_idx)
+                    newfeat_flv_idx = tmarker->flv_old_feature_idx;
                 env.markers.remove(tmarker);
             }
             else
@@ -2143,7 +2186,8 @@ bool revert_terrain_change(coord_def pos, terrain_change_type ctype)
     {
         if (ctype == TERRAIN_CHANGE_BOG)
             env.map_knowledge(pos).set_feature(newfeat, colour);
-        dungeon_terrain_changed(pos, newfeat, false, true);
+        dungeon_terrain_changed(pos, newfeat, false, true, false, false,
+                                newfeat_flv, newfeat_flv_idx);
         env.grid_colours(pos) = colour;
         return true;
     }
@@ -2233,7 +2277,7 @@ vector<coord_def> get_push_spaces(const coord_def& pos, bool push_actor,
     if (push_actor)
     {
         act = actor_at(pos);
-        if (!act || act->is_stationary())
+        if (!act || act->is_stationary() || act->resists_dislodge())
             return results;
     }
 
@@ -2415,9 +2459,10 @@ void ice_wall_damage(monster &mons, int delay)
     if (!walls)
         return;
 
-    const int pow = calc_spell_power(SPELL_FROZEN_RAMPARTS, true);
+    const int pow = you.props[FROZEN_RAMPARTS_POWER_KEY].get_int();
     const int undelayed_dam = ramparts_damage(pow).roll();
-    const int orig_dam = div_rand_round(delay * undelayed_dam, BASELINE_DELAY);
+    const int post_ac_dam = mons.apply_ac(undelayed_dam);
+    const int orig_dam = div_rand_round(delay * post_ac_dam, BASELINE_DELAY);
 
     bolt beam;
     beam.flavour = BEAM_COLD;
@@ -2437,5 +2482,71 @@ void ice_wall_damage(monster &mons, int delay)
             behaviour_event(&mons, ME_WHACK, &you);
             mons.expose_to_element(BEAM_COLD, orig_dam);
         }
+    }
+}
+
+static bool _feat_is_descent_upstairs(dungeon_feature_type feat)
+{
+    if (feat_is_descent_exitable(feat))
+        return false;
+
+    return feat_is_stone_stair_up(feat)
+        || feat_is_branch_exit(feat)
+        || feat == DNGN_EXIT_VAULTS
+        || feat == DNGN_EXIT_ZOT
+        || feat == DNGN_ESCAPE_HATCH_UP;
+}
+
+void descent_crumble_stairs()
+{
+    if (!crawl_state.game_is_descent() || env.properties.exists(DESCENT_STAIRS_KEY))
+        return;
+
+    for (rectangle_iterator ri(0); ri; ++ri)
+    {
+        dungeon_feature_type feat = env.grid(*ri);
+        if (_feat_is_descent_upstairs(feat))
+        {
+            dungeon_terrain_changed(*ri, DNGN_FLOOR);
+            if (you.see_cell(*ri))
+                mpr("The exit collapses.");
+            if (env.map_knowledge(*ri).feat())
+            {
+                env.map_knowledge(*ri).set_feature(DNGN_FLOOR);
+                set_terrain_mapped(*ri);
+            }
+            force_show_update_at(*ri);
+            view_update_at(*ri);
+        }
+    }
+
+    env.properties[DESCENT_STAIRS_KEY] = true;
+}
+
+static void _descent_reveal_around(coord_def p)
+{
+    force_show_update_at(p);
+    view_update_at(p);
+
+    for (radius_iterator ri(p, you.current_vision, C_SQUARE); ri; ++ri)
+    {
+        if (cell_see_cell_nocache(p, *ri))
+        {
+            force_show_update_at(*ri);
+            update_item_at(*ri, true);
+            set_terrain_visible(*ri);
+            view_update_at(*ri);
+        }
+    }
+}
+
+void descent_reveal_stairs()
+{
+    // possible this should be in another file.
+    for (rectangle_iterator ri(0); ri; ++ri)
+    {
+        dungeon_feature_type feat = env.grid(*ri);
+        if (_feat_is_descent_upstairs(feat))
+            _descent_reveal_around(*ri);
     }
 }

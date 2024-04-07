@@ -138,6 +138,7 @@ map-knowledge.o \
 mapdef.o \
 mapmark.o \
 maps.o \
+maybe-bool.o \
 melee-attack.o \
 menu.o \
 message-stream.o \
@@ -152,7 +153,6 @@ mon-death.o \
 mon-ench.o \
 mon-explode.o \
 mon-gear.o \
-mon-grow.o \
 mon-info.o \
 mon-movetarget.o \
 mon-pathfind.o \
@@ -224,7 +224,6 @@ spl-summoning.o \
 spl-transloc.o \
 spl-util.o \
 spl-vortex.o \
-spl-wpnench.o \
 spl-zap.o \
 sprint.o \
 sqldbm.o \
@@ -266,7 +265,8 @@ wizard.o \
 worley.o \
 xom.o \
 tilepick.o \
-tileview.o
+tileview.o \
+zot.o
 
 TILES_OBJECTS = \
 tiledoll.o \
@@ -391,8 +391,10 @@ enum.h.o \
 equipment-type.h.o \
 errors.h.o \
 externs.h.o \
+explore-greedy-options.h.o \
 fight.h.o \
 filter-enum.h.o \
+fixedp.h.o \
 fineff.h.o \
 flang-t.h.o \
 flush-reason-type.h.o \
@@ -420,9 +422,11 @@ job-type.h.o \
 KeymapContext.h.o \
 kill-category.h.o \
 killer-type.h.o \
+kill-dump-options-type.h.o \
 kill-method-type.h.o \
 known-items.h.o \
 lang-t.h.o \
+level-gen-type.h.o \
 level-id.h.o \
 level-state-type.h.o \
 lev-pand.h.o \
@@ -529,7 +533,6 @@ spl-selfench.h.o \
 spl-summoning.h.o \
 spl-transloc.h.o \
 spl-util.h.o \
-spl-wpnench.h.o \
 spl-zap.h.o \
 sprint.h.o \
 sqldbm.h.o \
@@ -589,6 +592,7 @@ $(WEBTILES_OBJECTS) $(YACC_OBJECTS) $(TILEDEFOBJS) $(HEADER_OBJECTS) \
 libw32c.o \
 libunix.o \
 catch2-tests/test_plug_and_play.o \
+catch2-tests/catch_amalgamated.o \
 catch2-tests/test_main.o \
 main.o \
 util/monster/monster-main.o \

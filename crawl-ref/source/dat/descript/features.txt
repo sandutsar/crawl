@@ -169,18 +169,23 @@ Nothing but the mythical salamander can cross this without flight.
 Some shallow water
 
 A pool of cloudy, waist-deep water. Those well-adapted to water can swim
-through it; other creatures can wade through it slowly. Non-swimmers will
-occasionally fail to attack in melee when wading through shallow water,
-although large creatures are able to keep their balance and avoid fumbling.
+through it and attack normally. Non-swimmers must wade through the water slowly
+and will occasionally fail to attack in melee when wading through shallow
+water; although large creatures are able to keep their balance, move at a
+normal speed, and avoid fumbling.
 %%%%
 A toxic bog
 
 A filthy pool of poisonous, waist-deep sludge. Wading or swimming through the
 sludge will damage and poison any creature, even those resistant to poison.
-Those well-adapted to water can swim through it; other creatures can wade
-through it slowly. Non-swimmers will occasionally fail to attack in melee when
-wading through shallow water, although large creatures are able to keep their
-balance and avoid fumbling.
+Those well-adapted to water can swim through it and attack normally.
+Non-swimmers must wade through the water slowly and will occasionally fail to
+attack in melee when wading through shallow water; although large creatures are
+able to keep their balance, move at a normal speed, and avoid fumbling.
+%%%%
+Some mud
+
+A thick layer of gritty mud. [[liquefied]]
 %%%%
 The open sea
 
@@ -223,7 +228,8 @@ walls.
 %%%%
 A slime covered rock wall
 
-A rock wall coated with bright green slime. It is acidic to the touch.
+A rock wall coated with bright green slime. It is acidic to the touch; just
+standing near it is enough to cause temporary corrosion.
 %%%%
 A metal wall
 
@@ -351,6 +357,25 @@ A fountain of sparkling water
 
 A decorative fountain, flowing with brightly sparkling water.
 %%%%
+A cache of fruit
+
+A pile of assorted fruit, ranging from common dungeon staples like chokos and
+snozzcumbers, to rarer treats such as apples and oranges. You already carry as
+much food as you will ever need for this journey, but the occasional nibble
+wouldn't hurt.
+%%%%
+A cache of meat
+
+A stash of preserved meats of varied origins and preparations: strips of jerky,
+lumpy smoked sausages, and indeterminate protein rations. You already carry as
+much food as you will ever need for this journey, but this could offer the rare
+chance to try out yak...
+%%%%
+A runelight
+
+An unearthly, glittering light, floating and twisting in midair. A Rune of
+Zot is surely nearby, its power overspilling to cause this spectacular sight.
+%%%%
 # column_ruins
 A broken pillar
 
@@ -418,6 +443,10 @@ A gateway to the ashen valley of Gehenna
 
 A gateway leading to Gehenna.
 %%%%
+A gateway leading out of Gehenna
+
+A gateway leading back to the Vestibule of Hell.
+%%%%
 A gateway to Hell
 
 A gateway leading to the Vestibule of Hell. Few would go there voluntarily.
@@ -426,13 +455,25 @@ A gateway to the Iron City of Dis
 
 A gateway leading to the Iron City of Dis.
 %%%%
+A gateway leading out of Dis
+
+<A gateway leading out of Gehenna>
+%%%%
 A gateway to the decaying netherworld of Tartarus
 
 A gateway leading to Tartarus.
 %%%%
+A gateway leading out of Tartarus
+
+<A gateway leading out of Gehenna>
+%%%%
 A gateway to the freezing wastes of Cocytus
 
 A gateway leading to Cocytus.
+%%%%
+A gateway leading out of Cocytus
+
+<A gateway leading out of Gehenna>
 %%%%
 
 A hole to the Spider Nest
@@ -537,11 +578,11 @@ this location to return back through the transporter.
 ########################################################################
 An open door
 
-A wooden door.
+An open wooden door. If reopened by a monster, it has a chance of breaking.
 %%%%
 A closed door
 
-A wooden door.
+A closed wooden door. If opened by a monster, it has a chance of breaking.
 %%%%
 A broken door
 
@@ -550,11 +591,13 @@ to get this properly closed again.
 %%%%
 An open translucent door
 
-A door made from magically translucent wood.
+An open door made from magically translucent wood. If reopened by a monster,
+it has a chance of breaking.
 %%%%
 A closed translucent door
 
-A door made from magically translucent wood.
+A closed door made from magically translucent wood. If opened by a monster, it
+has a chance of breaking.
 %%%%
 A broken translucent door
 
@@ -569,7 +612,8 @@ A runed door
 
 A door, covered in runic writing. It looks like there is something special
 behind it — perhaps danger, perhaps treasure. You may break the runes by
-opening it like any other door.
+opening it like any other door, but creatures of the dungeon will not dare
+to try.
 %%%%
 A large open door
 
@@ -685,8 +729,9 @@ allies will avoid stepping on it.
 %%%%
 A net trap
 
-A large concealed net launcher hanging from the dungeon's ceiling, enchanted
-by the powers of Zot to land only on intruders.
+A large concealed net launcher hanging from the dungeon's ceiling. Enchanted by
+the power of Zot, whenever an intelligent creature steps here - whether friend
+or foe - the net will land only on you.
 %%%%
 A pressure plate
 
@@ -745,6 +790,12 @@ inventory, the merchants will depart in search of other customers.
 A frozen archway
 
 A portal leading to an ice cave. The archway is gradually melting away.
+%%%%
+A glacial archway
+
+A portal leading to a glacial chasm, far more dangerous than the icy caverns
+found in the shallower reaches of the Dungeon. The archway is gradually melting
+away.
 %%%%
 A sand-covered staircase
 
@@ -855,7 +906,7 @@ The floor. It pulses to an unknown beat.
 # wizlab: Zonguldrok
 Zonguldrok's gravestone
 
-A gravestone. The name ‘Zonguldrok’ is engraved on it in golden letters.
+A gravestone of the house of Zonguldrok, still dripping with brackish ichor.
 %%%%
 A gravestone
 
@@ -899,6 +950,11 @@ A dead mangrove
 
 The dry remains of a long-dead mangrove.
 %%%%
+A metal statue
+
+A base type statue for other statue flavours. If you see this, file a bug
+report.
+%%%%
 # Dis:7
 An iron statue
 
@@ -933,11 +989,94 @@ Frost-covered floor
 Earth locked within perpetual frost and cold. It seems ageless and changeless,
 as though it has existed in this state for an eternity.
 %%%%
-# Pan: the holy level
+# Gozag and TSO vaults.
 A golden statue
 
 A solid gold statue of a saint.
 %%%%
+# Zin vaults and Vaults branch.
+A silver statue
+
+A geometric statue of solid silver, in both material and form championing
+security and stasis.
+%%%%
+# Xom, Nemelex, and klown vaults.
+A scintillating statue
+
+A magically shifting statue seemingly content to glimmer and dance in place,
+dedicated to the ineffable cosmic games of chaos.
+%%%%
+# Menagerie vaults.
+A mystic cage
+
+A sturdy metal cage, inscribed with cryptic magics. Whatever it once held -
+whether person, beast, or experiment - was evidently already freed in response
+to intruders like you infiltrating the Dungeon.
+%%%%
+# Themed magic branches / portals / vaults.
+An arcane conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its destructive mystic
+energy will harmlessly disperse.
+%%%%
+A misfortune conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its malevolent cursed
+energy will harmlessly disperse.
+%%%%
+A dimensional conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its extraplanar warp
+energy will harmlessly disperse.
+%%%%
+A soul conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its negative energy will
+harmlessly disperse.
+%%%%
+An alchemical conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its venomous churning
+energy will harmlessly disperse.
+%%%%
+A fiery conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its ever-burning energy
+will harmlessly disperse.
+%%%%
+An icy conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its chilling cold energy
+will harmlessly disperse.
+%%%%
+An earthen conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its seismic energy will
+harmlessly disperse.
+%%%%
+A storm conduit
+
+A strange but benign metal construct, analyzing raw ambient magical energy. If
+destroyed and disrupted by sufficiently mighty magic, its crackling energy will
+harmlessly disperse.
+%%%%
+# Vaults with extraplanar contents.
+A bedeviled crystal wall
+
+A wall made from shimmering crystal, from which some demonic plane peers out.
+While its composition both make it resist destruction plus reflect both fire and
+cold, the otherworldly forces within it seem to be entirely harmless... from
+this end, anyway.
+%%%%
+# Holy Pan.
 A silver wall
 
 A wall made of pure silver.
@@ -1004,16 +1143,12 @@ A large window
 A window embedded in the side of an enormous metal pipe, allowing observation
 of the water flowing inside.
 %%%%
-A glass window
-
-A pockmarked, ultra-hard glass window.
-%%%%
 A petrified tree
 
 An ancient tree, long ago passed from biology into geology. While no longer
 wooden in a material sense, it retains the spiritual qualities of a tree.
 %%%%
-# due_jungle_book (Lair:6)
+# due_jungle_book (Lair:$)
 An elephant-shaped statue
 
 A worn granite statue depicting an elephant standing guard.

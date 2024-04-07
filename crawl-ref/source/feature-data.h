@@ -185,27 +185,34 @@ static feature_def feat_defs[] =
     DNGN_OPEN_SEA, "the open sea", "open_sea",
     DCHAR_WALL, NUM_DCHAR_TYPES,
     COLOUR_IS(BLUE),
-    FFT_SOLID, MF_DEEP_WATER,
+    FFT_WALL | FFT_SOLID, MF_DEEP_WATER,
 },
 
 {
     DNGN_LAVA_SEA, "the endless lava", "endless_lava",
     DCHAR_WALL, NUM_DCHAR_TYPES,
     COLOUR_IS(RED),
-    FFT_SOLID, MF_LAVA,
+    FFT_WALL | FFT_SOLID, MF_LAVA,
 },
 
 {
     DNGN_ENDLESS_SALT, "endless expanse of salt", "endless_salt",
     DCHAR_WALL, NUM_DCHAR_TYPES,
     COLOUR_IS(WHITE),
-    FFT_SOLID, MF_FLOOR,
+    FFT_WALL | FFT_SOLID, MF_FLOOR,
 },
 
 {
     DNGN_ORCISH_IDOL, "orcish idol", "orcish_idol",
     DCHAR_STATUE, NUM_DCHAR_TYPES,
     COLOUR_IS(BROWN),
+    FFT_SOLID, MF_WALL,
+},
+
+{
+    DNGN_METAL_STATUE, "metal statue", "metal_statue",
+    DCHAR_STATUE, NUM_DCHAR_TYPES,
+    COLOUR_IS(DARKGREY),
     FFT_SOLID, MF_WALL,
 },
 
@@ -239,16 +246,23 @@ static feature_def feat_defs[] =
 
 {
     DNGN_SHALLOW_WATER, "some shallow water", "shallow_water",
-    DCHAR_WAVY, NUM_DCHAR_TYPES,
+    DCHAR_SHALLOW_WAVY, NUM_DCHAR_TYPES,
     COLOUR_IS(CYAN),
     FFT_NONE, MF_WATER,
 },
 
 {
     DNGN_TOXIC_BOG, "a toxic bog", "toxic_bog",
-    DCHAR_WAVY, NUM_DCHAR_TYPES,
+    DCHAR_SHALLOW_WAVY, NUM_DCHAR_TYPES,
     COLOUR_IS(ETC_POISON),
     FFT_NONE, MF_WATER,
+},
+
+{
+    DNGN_MUD, "some mud", "mud",
+    DCHAR_SHALLOW_WAVY, NUM_DCHAR_TYPES,
+    COLOUR_IS(BROWN),
+    FFT_NONE, MF_FLOOR,
 },
 
 {
@@ -440,11 +454,18 @@ STONE_STAIRS_UP(III, iii),
 }
 
 PORTAL_ENTRANCE(DNGN_ENTER_DIS, "gateway to the Iron City of Dis", "enter_dis", CYAN),
+PORTAL_EXIT(DNGN_EXIT_DIS, "gateway leading out of Dis", "exit_dis", CYAN),
 PORTAL_ENTRANCE(DNGN_ENTER_GEHENNA, "gateway to the ashen valley of Gehenna", "enter_gehenna", RED),
+PORTAL_EXIT(DNGN_EXIT_GEHENNA, "gateway leading out of Gehenna",
+                "exit_gehenna", RED),
 PORTAL_ENTRANCE(DNGN_ENTER_COCYTUS, "gateway to the freezing wastes of Cocytus", "enter_cocytus", LIGHTCYAN),
+PORTAL_EXIT(DNGN_EXIT_COCYTUS, "gateway leading out of Cocytus",
+                "exit_cocytus", RED),
 PORTAL_ENTRANCE(DNGN_ENTER_TARTARUS, "gateway to the decaying netherworld of Tartarus", "enter_tartarus", MAGENTA),
+PORTAL_EXIT(DNGN_EXIT_TARTARUS, "gateway leading out of Tartarus",
+            "exit_tartarus", MAGENTA),
 PORTAL_ENTRANCE(DNGN_ENTER_HELL, "gateway to Hell", "enter_hell", RED),
-PORTAL_EXIT(DNGN_EXIT_HELL, "gateway back into the Dungeon", "exit_hell", LIGHTRED),
+PORTAL_EXIT(DNGN_EXIT_HELL, "gateway back to the Dungeon", "exit_hell", LIGHTRED),
 
 PORTAL_ENTRANCE(DNGN_ENTER_ABYSS, "one-way gate to the infinite horrors of the Abyss", "enter_abyss", ETC_WARP),
 PORTAL_ENTRANCE(DNGN_EXIT_THROUGH_ABYSS, "exit through the horrors of the Abyss", "exit_through_abyss", ETC_WARP),
@@ -463,7 +484,7 @@ PORTAL_EXIT(DNGN_EXIT_ZOT, "gate leading back out of this place", "exit_zot", MA
 #if TAG_MAJOR_VERSION == 34
 PORTAL_ENTRANCE(DNGN_ENTER_PORTAL_VAULT, "gate leading to a distant place", "enter_portal_vault", ETC_SHIMMER_BLUE),
 #endif
-PORTAL_ENTRANCE(DNGN_ENTER_ZIGGURAT, "gateway to a ziggurat", "enter_ziggurat", ETC_SHIMMER_BLUE),
+PORTAL_ENTRANCE(DNGN_ENTER_ZIGGURAT, "one-way gateway to a ziggurat", "enter_ziggurat", ETC_SHIMMER_BLUE),
 PORTAL_ENTRANCE(DNGN_ENTER_BAZAAR, "gateway to a bazaar", "enter_bazaar", ETC_SHIMMER_BLUE),
 PORTAL_ENTRANCE(DNGN_ENTER_TROVE, "portal to a secret trove of treasure", "enter_trove", BLUE),
 PORTAL_ENTRANCE(DNGN_ENTER_SEWER, "glowing drain", "enter_sewer", LIGHTGREEN),
@@ -602,7 +623,7 @@ ALTAR(DNGN_ALTAR_QAZLAL, "stormy altar of Qazlal", "altar_qazlal", ETC_ELEMENTAL
 ALTAR(DNGN_ALTAR_RU, "sacrificial altar of Ru", "altar_ru", BROWN),
 ALTAR(DNGN_ALTAR_ECUMENICAL, "faded altar of an unknown god", "altar_ecumenical", ETC_DARK),
 #if TAG_MAJOR_VERSION == 34
-ALTAR(DNGN_ALTAR_PAKELLAS, "oddly glowing altar of Pakellas", "altar_pakellas", ETC_PAKELLAS),
+ALTAR(DNGN_ALTAR_PAKELLAS, "oddly glowing altar of Pakellas", "altar_pakellas", DARKGREY),
 #endif
 ALTAR(DNGN_ALTAR_USKAYAW, "hide-covered altar of Uskayaw", "altar_uskayaw", ETC_INCARNADINE),
 ALTAR(DNGN_ALTAR_HEPLIAKLQANA, "hazy altar of Hepliaklqana", "altar_hepliaklqana", LIGHTGREEN),
@@ -625,6 +646,22 @@ FOUNTAIN(DNGN_DRY_FOUNTAIN_BLUE, "dry fountain", "non-fountain_blue", LIGHTGREY)
 FOUNTAIN(DNGN_DRY_FOUNTAIN_SPARKLING, "dry fountain", "non-fountain_sparkling", LIGHTGREY),
 FOUNTAIN(DNGN_DRY_FOUNTAIN_BLOOD, "dry fountain", "non-fountain_blood", LIGHTGREY),
 #endif
+
+FOUNTAIN(DNGN_RUNELIGHT, "runelight", "runelight", ETC_DISJUNCTION),
+
+{
+    DNGN_CACHE_OF_FRUIT, "cache of fruit", "cache of fruit",
+    DCHAR_ITEM_SKELETON, NUM_DCHAR_TYPES,
+    COLOUR_AND_MAP(GREEN),
+    FFT_NONE, MF_FLOOR,
+},
+
+{
+    DNGN_CACHE_OF_MEAT, "cache of meat", "cache of meat",
+    DCHAR_ITEM_SKELETON, NUM_DCHAR_TYPES,
+    COLOUR_AND_MAP(BROWN),
+    FFT_NONE, MF_FLOOR,
+},
 
 #if TAG_MAJOR_VERSION == 34
 {
@@ -667,6 +704,13 @@ FOUNTAIN(DNGN_DRY_FOUNTAIN_BLOOD, "dry fountain", "non-fountain_blood", LIGHTGRE
     DCHAR_STAIRS_DOWN, NUM_DCHAR_TYPES,
     COLOUR_AND_MAP(LIGHTCYAN),
     FFT_NONE, MF_STAIR_BRANCH,
+},
+
+{
+    DNGN_BINDING_SIGIL, "a binding sigil", "binding_sigil",
+    DCHAR_TRAP, NUM_DCHAR_TYPES,
+    COLOUR_AND_MAP(RED),
+    FFT_NONE, MF_FLOOR,
 },
 
 };

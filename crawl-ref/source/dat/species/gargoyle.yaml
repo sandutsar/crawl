@@ -1,7 +1,7 @@
 enum: SP_GARGOYLE
 monster: MONS_GARGOYLE
-name: "Gargoyle"
-short_name: "Gr"
+name: Gargoyle
+short_name: Gr
 difficulty: Simple
 difficulty_priority: 70
 species_flags:
@@ -10,13 +10,12 @@ aptitudes:
   xp: 0
   hp: -2
   mp_mod: 0
-  mr: 3
+  wl: 3
   fighting: 1
   short_blades: -1
   long_blades: -1
   axes: -1
   polearms: -1
-  slings: -1
   throwing: -1
   armour: 1
   dodging: -2
@@ -28,9 +27,10 @@ aptitudes:
   summoning: -1
   necromancy: -2
   translocations: -1
-  transmutations: -2
+  shapeshifting: -3
   air_magic: -2
   earth_magic: 2
+  alchemy: -2
   invocations: 1
   evocations: -1
 str: 11
@@ -57,14 +57,10 @@ recommended_jobs:
   - JOB_MONK
   - JOB_BERSERKER
   - JOB_FIRE_ELEMENTALIST
-  - JOB_ICE_ELEMENTALIST
   - JOB_EARTH_ELEMENTALIST
-  - JOB_VENOM_MAGE
+  - JOB_REAVER
 recommended_weapons:
   - SK_MACES_FLAILS
   - SK_STAVES
-  - SK_BOWS
-  - SK_CROSSBOWS
-# start TAG_MAJOR_VERSION == 34
-create_enum: false
-# end TAG_MAJOR_VERSION
+
+orc_name: Gargorcle

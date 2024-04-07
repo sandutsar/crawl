@@ -114,8 +114,6 @@ public:
 
     int  armour_rating() const;
 
-    bool launched_by(const item_def &launcher) const;
-
     void clear()
     {
         *this = item_def();
@@ -140,13 +138,16 @@ public:
 
     bool defined() const;
     bool appearance_initialized() const;
-    bool is_valid(bool info = false) const;
+    bool is_valid(bool info = false, bool error=false) const;
 
     /** Should this item be preserved as far as possible? */
     bool is_critical() const;
 
     /** Is this item of a type that should not be generated enchanted? */
     bool is_mundane() const;
+
+    /// If this is a gem, what colour is it in console?
+    colour_t gem_colour() const;
 
 private:
     string name_aux(description_level_type desc, bool terse, bool ident,
@@ -167,6 +168,7 @@ private:
     colour_t potion_colour() const;
     colour_t book_colour() const;
     colour_t miscellany_colour() const;
+    colour_t talisman_colour() const;
     colour_t corpse_colour() const;
 };
 

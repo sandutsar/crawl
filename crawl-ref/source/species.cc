@@ -4,7 +4,9 @@
 #include "mpr.h"
 #include "species.h"
 
+#include "branch.h"
 #include "item-prop.h"
+#include "items.h"
 #include "mutation.h"
 #include "output.h"
 #include "playable.h"
@@ -15,6 +17,7 @@
 #include "stringutil.h"
 #include "tag-version.h"
 #include "tiledoll.h"
+#include "travel.h"
 
 #include "species-data.h"
 
@@ -68,13 +71,15 @@ namespace species
         return SP_UNKNOWN;
     }
 
-    /// Does loose, non-case-sensitive lookup of a species based on a string
+    /// Does loose, non-case-sensitive lookup of a species based on a string,
+    /// prioritizing non-removed species
     species_type from_str_loose(const string &species, bool initial_only)
     {
         // XX consolidate with from_str?
         string spec = lowercase_string(species);
 
         species_type sp = SP_UNKNOWN;
+        species_type removed = SP_UNKNOWN;
 
         for (int i = 0; i < NUM_SPECIES; ++i)
         {
@@ -84,18 +89,26 @@ namespace species
             string::size_type pos = sp_name.find(spec);
             if (pos != string::npos)
             {
-                if (pos == 0)
+                if (is_removed(si))
                 {
-                    // We prefer prefixes over partial matches.
-                    sp = si;
-                    break;
+                    // first matching removed species
+                    if (removed == SP_UNKNOWN && (!initial_only || pos == 0))
+                        removed = si;
+                    // otherwise, we already found a matching removed species
                 }
-                else if (!initial_only)
+                else if (pos == 0 || !initial_only)
+                {
                     sp = si;
+                    // We prefer prefixes over partial matches.
+                    if (pos == 0)
+                        break;
+                }
             }
         }
-
-        return sp;
+        if (sp != SP_UNKNOWN)
+            return sp;
+        else
+            return removed;
     }
 
 
@@ -119,11 +132,6 @@ namespace species
     bool is_elven(species_type species)
     {
         return species == SP_DEEP_ELF;
-    }
-
-    bool is_orcish(species_type species)
-    {
-        return species == SP_HILL_ORC;
     }
 
     bool is_undead(species_type species)
@@ -222,14 +230,15 @@ namespace species
     {
         switch (species)
         {
-        case SP_GREEN_DRACONIAN:   return ABIL_BREATHE_MEPHITIC;
-        case SP_RED_DRACONIAN:     return ABIL_BREATHE_FIRE;
-        case SP_WHITE_DRACONIAN:   return ABIL_BREATHE_FROST;
-        case SP_YELLOW_DRACONIAN:  return ABIL_BREATHE_ACID;
-        case SP_BLACK_DRACONIAN:   return ABIL_BREATHE_LIGHTNING;
-        case SP_PURPLE_DRACONIAN:  return ABIL_BREATHE_POWER;
-        case SP_PALE_DRACONIAN:    return ABIL_BREATHE_STEAM;
-        case SP_BASE_DRACONIAN: case SP_GREY_DRACONIAN:
+        case SP_GREEN_DRACONIAN:   return ABIL_NOXIOUS_BREATH;
+        case SP_RED_DRACONIAN:     return ABIL_COMBUSTION_BREATH;
+        case SP_WHITE_DRACONIAN:   return ABIL_GLACIAL_BREATH;
+        case SP_YELLOW_DRACONIAN:  return ABIL_CAUSTIC_BREATH;
+        case SP_BLACK_DRACONIAN:   return ABIL_GALVANIC_BREATH;
+        case SP_PURPLE_DRACONIAN:  return ABIL_NULLIFYING_BREATH;
+        case SP_PALE_DRACONIAN:    return ABIL_STEAM_BREATH;
+        case SP_GREY_DRACONIAN:    return ABIL_MUD_BREATH;
+        case SP_BASE_DRACONIAN:
         default: return ABIL_NON_ABILITY;
         }
     }
@@ -323,6 +332,43 @@ namespace species
         return verb ? verb : "Walk";
     }
 
+    /** For purposes of skill/god titles, what walking-like thing does this
+     *  species do?
+     *
+     *  @param sp what kind of species to look at
+     *  @returns a "word" to which "-er" or "-ing" can be appended.
+     */
+    string walking_title(species_type sp)
+    {
+        if (sp == SP_ARMATAUR)
+            return "Roll";
+        return walking_verb(sp);
+    }
+
+    /**
+     * What is an appropriate name for children of this species?
+     *
+     *  @param sp what kind of species to look at
+     *  @returns something like 'kitten' or 'child'.
+     */
+    string child_name(species_type sp)
+    {
+        auto verb = get_species_def(sp).child_name;
+        return verb ? verb : "Child";
+    }
+
+    /**
+     * What is an appropriate name for orcs of this species?
+     *
+     *  @param sp what kind of species to look at
+     *  @returns something with 'orc' in it.
+     */
+    string orc_name(species_type sp)
+    {
+        auto verb = get_species_def(sp).orc_name;
+        return verb ? verb : "Orc";
+    }
+
     /**
      * What message should be printed when a character of the specified species
      * prays at an altar, if not in some form?
@@ -413,6 +459,8 @@ namespace species
             return "tentacle";
         else if (mutation_level(species, MUT_CLAWS))
             return "claw"; // overridden for felids by first check
+        else if (species == SP_COGLIN)
+            return "grasper";
         else
             return "hand";
     }
@@ -477,7 +525,7 @@ namespace species
             break;
         }
         // remaining should be armour only
-        if (species == SP_OCTOPODE && eq != EQ_HELMET && eq != EQ_SHIELD)
+        if (species == SP_OCTOPODE && eq != EQ_HELMET && eq != EQ_OFFHAND)
             return true;
 
         if (is_draconian(species) && eq == EQ_BODY_ARMOUR)
@@ -497,6 +545,8 @@ namespace species
     vector<equipment_type> ring_slots(species_type species, bool missing_hand)
     {
         vector<equipment_type> result;
+        if (you.has_mutation(MUT_NO_JEWELLERY))
+            return result;
 
         const equipment_type missing = missing_hand
                             ? sacrificial_arm(species) : EQ_NONE;
@@ -558,7 +608,6 @@ namespace species
     bool recommends_weapon(species_type species, weapon_type wpn)
     {
         const skill_type sk =
-              wpn == WPN_THROWN  ? SK_THROWING :
               wpn == WPN_UNARMED ? SK_UNARMED_COMBAT :
                                    item_attack_skill(OBJ_WEAPONS, wpn);
 
@@ -615,6 +664,30 @@ namespace species
         }
         return species;
     }
+}
+
+int draconian_breath_uses_available()
+{
+    if (!species::is_draconian(you.species))
+        return 0;
+
+    if (!you.props.exists(DRACONIAN_BREATH_USES_KEY))
+        return 0;
+
+    return you.props[DRACONIAN_BREATH_USES_KEY].get_int();
+}
+
+// Attempts to gain num uses of our draconian breath weapon.
+// Returns true if any were gained (ie: we were not already capped)
+bool gain_draconian_breath_uses(int num)
+{
+    int cur = draconian_breath_uses_available();
+
+    if (cur >= MAX_DRACONIAN_BREATH)
+        return false;
+
+    you.props[DRACONIAN_BREATH_USES_KEY] = min(MAX_DRACONIAN_BREATH, cur + num);
+    return true;
 }
 
 void give_basic_mutations(species_type species)
@@ -681,6 +754,8 @@ void change_species_to(species_type sp)
     species_type old_sp = you.species;
     you.species = sp;
     you.chr_species_name = species::name(sp);
+    dprf("Species change: %s -> %s", species::name(old_sp).c_str(),
+        you.chr_species_name.c_str());
 
     // Change permanent mutations, but preserve non-permanent ones.
     uint8_t prev_muts[NUM_MUTATIONS];
@@ -690,8 +765,8 @@ void change_species_to(species_type sp)
     {
         if (you.has_innate_mutation(static_cast<mutation_type>(i)))
         {
-            you.mutation[i] -= you.innate_mutation[i];
-            you.innate_mutation[i] = 0;
+            you.mutation[i] -= you.innate_mutation[i] - you.sacrifices[i];
+            you.innate_mutation[i] = you.sacrifices[i];
         }
         prev_muts[i] = you.mutation[i];
     }
@@ -737,16 +812,32 @@ void change_species_to(species_type sp)
     // FIXME: this checks only for valid slots, not for suitability of the
     // item in question. This is enough to make assertions happy, though.
     for (int i = EQ_FIRST_EQUIP; i < NUM_EQUIP; ++i)
-        if (you_can_wear(static_cast<equipment_type>(i)) == MB_FALSE
-            && you.equip[i] != -1)
+    {
+        if (you.equip[i] != -1)
         {
-            mprf("%s fall%s away.",
-                 you.inv[you.equip[i]].name(DESC_YOUR).c_str(),
-                 you.inv[you.equip[i]].quantity > 1 ? "" : "s");
-            // Unwear items without the usual processing.
-            you.equip[i] = -1;
-            you.melded.set(i, false);
+            if (i == EQ_WEAPON && you.inv[you.equip[i]].base_type == OBJ_WEAPONS
+                && sp == SP_COGLIN)
+            {
+                // Coglins' wielded non-offhand weapons need names. Without
+                // them, wielding a non-offhand weapon, changing species to
+                // coglin, and then trying to unwield that weapon will assert.
+                maybe_name_weapon(you.inv[you.equip[i]], true);
+            }
+
+            if (bool(!you_can_wear(static_cast<equipment_type>(i)))
+                // XXX: This can't be caught by you_can_wear as everyone has offhand slots
+                || (i == EQ_OFFHAND && you.inv[you.equip[i]].base_type == OBJ_WEAPONS
+                    && !you.has_mutation(MUT_WIELD_OFFHAND)))
+            {
+                mprf("%s fall%s away.",
+                     you.inv[you.equip[i]].name(DESC_YOUR).c_str(),
+                     you.inv[you.equip[i]].quantity > 1 ? "" : "s");
+                // Unwear items without the usual processing.
+                you.equip[i] = -1;
+                you.melded.set(i, false);
+            }
         }
+    }
 
     // Sanitize skills.
     fixup_skills();

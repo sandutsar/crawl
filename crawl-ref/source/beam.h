@@ -12,6 +12,7 @@
 #include "enchant-type.h"
 #include "externs.h"
 #include "killer-type.h"
+#include "mon-ai-action.h"
 #include "mon-attitude-type.h"
 #include "random.h"
 #include "ray.h"
@@ -66,7 +67,9 @@ struct bolt
                                            // will remain the same while flavour
                                            // changes
     bool        drop_item = false;     // should drop an item when done
-    item_def*   item = nullptr;        // item to drop
+    bool        item_mulches = false;  // item will mulch on hit
+    const item_def*   item = nullptr;  // item to drop
+    const item_def*   launcher = nullptr; // origin launcher, if any
     coord_def   source = {0,0};           // beam origin
     coord_def   target = {0,0};           // intended target
     dice_def    damage = dice_def(0,0);
@@ -103,6 +106,8 @@ struct bolt
     bool   effect_known = true;   // did we _know_ this would happen?
     bool   effect_wanton = false; // could we have guessed it would happen?
 
+    bool   no_saving_throw = false;   // whether to ignore any saving throw
+                                      // this beam might otherwise have
     int    draw_delay = 15;       // delay used when drawing beam.
     int    explode_delay = 50;    // delay when drawing explosions.
     bool   redraw_per_cell = true; // whether to force a redraw after every cell
@@ -153,6 +158,8 @@ struct bolt
     bool beam_cancelled = false;  // stop_attack_prompt() returned true
     bool dont_stop_player = false; // player answered self target prompt with 'y'
     bool dont_stop_trees = false; // player answered tree-burning prompt with 'y'
+    bool overshoot_prompt = true; // warn when an ally is past the target
+    bool friendly_past_target = false; // we fired and found something past the target
 
     int       bounces = 0;        // # times beam bounced off walls
     coord_def bounce_pos = {0,0}; // position of latest wall bounce,
@@ -172,11 +179,14 @@ private:
     bool can_see_invis = false;
     bool nightvision = false;
 
+    bool can_trigger_bullseye = false;
+
 public:
     bool is_enchantment() const; // no block/dodge, use willpower
     void set_target(const dist &targ);
     void set_agent(const actor *agent);
     void setup_retrace();
+    void precalc_agent_properties();
 
     // Returns YOU_KILL or MON_KILL, depending on the source of the beam.
     killer_type  killer() const;
@@ -198,7 +208,7 @@ public:
     bool can_affect_wall(const coord_def& p, bool map_knowledge = false) const;
     bool ignores_monster(const monster* mon) const;
     bool ignores_player() const;
-    bool can_knockback(const actor &act, int dam = -1) const;
+    bool can_knockback(int dam = -1) const;
     bool can_pull(const actor &act, int dam = -1) const;
     bool god_cares() const; // Will the god be unforgiving about this beam?
     bool is_harmless(const monster* mon) const;
@@ -207,7 +217,6 @@ public:
     bool has_saving_throw() const;
 
     void draw(const coord_def& p, bool force_refresh=true);
-    void drop_object(bool allow_mulch=true);
 
     // Various explosion-related stuff.
     bool explode(bool show_more = true, bool hole_in_the_middle = false);
@@ -245,6 +254,7 @@ private:
     bool is_big_cloud() const; // expands into big_cloud at endpoint
     int range_used_on_hit() const;
     bool bush_immune(const monster &mons) const;
+    bool at_blocking_monster() const;
     int apply_lighting(int base_hit, const actor &target) const;
 
     set<string> message_cache;
@@ -270,6 +280,7 @@ private:
     void affect_place_explosion_clouds();
     int range_used(bool leg_only = false) const;
     void finish_beam();
+    void drop_object();
 
     // These methods make the beam affect a specific actor, not
     // necessarily what's at pos().
@@ -278,6 +289,7 @@ public:
 private:
     // for monsters
     void affect_monster(monster* m);
+    void kill_monster(monster &m);
     void handle_stop_attack_prompt(monster* mon);
     bool attempt_block(monster* mon);
     void update_hurt_or_helped(monster* mon);
@@ -289,6 +301,7 @@ public:
 private:
     void apply_bolt_paralysis(monster* mons);
     void apply_bolt_petrify(monster* mons);
+    void handle_petrify_chaining(coord_def centre);
     void monster_post_hit(monster* mon, int dmg);
     // for players
     void affect_player();
@@ -306,6 +319,7 @@ private:
     void tracer_affect_monster(monster* mon);
     void tracer_enchantment_affect_monster(monster* mon);
     void tracer_nonenchantment_affect_monster(monster* mon);
+    bool has_relevant_side_effect(monster* mon);
 
     // methods to change the path
     void bounce();
@@ -313,6 +327,7 @@ private:
     bool fuzz_invis_tracer();
 public:
     void choose_ray();
+    ai_action::goodness good_to_fire() const;
 };
 
 int mons_adjust_flavoured(monster* mons, bolt &pbolt, int hurted,
@@ -324,8 +339,8 @@ bool enchant_actor_with_flavour(actor* victim, const actor *atk,
 
 bool enchant_monster_invisible(monster* mon, const string &how);
 
-bool ench_flavour_affects_monster(beam_type flavour, const monster* mon,
-                                                  bool intrinsic_only = false);
+bool ench_flavour_affects_monster(actor *agent, beam_type flavour,
+                                  const monster* mon, bool intrinsic_only = false);
 spret mass_enchantment(enchant_type wh_enchant, int pow,
                             bool fail = false);
 int ench_power_stepdown(int pow);
@@ -333,10 +348,10 @@ int ench_power_stepdown(int pow);
 bool poison_monster(monster* mons, const actor* who, int levels = 1,
                     bool force = false, bool verbose = true);
 bool miasma_monster(monster* mons, const actor* who);
-bool napalm_monster(monster* mons, const actor* who, int levels = 1,
+bool sticky_flame_monster(monster* mons, const actor* who, int dur,
                     bool verbose = true);
-bool curare_actor(actor* source, actor* target, int levels, string name,
-                  string source_name);
+bool curare_actor(actor* source, actor* target, string name,
+                  string source_name, int bonus_poison = 0);
 int silver_damages_victim(actor* victim, int damage, string &dmg_msg);
 void fire_tracer(const monster* mons, bolt &pbolt,
                   bool explode_only = false, bool explosion_hole = false);
@@ -345,7 +360,8 @@ spret zapping(zap_type ztype, int power, bolt &pbolt,
                    bool fail = false);
 bool player_tracer(zap_type ztype, int power, bolt &pbolt, int range = 0);
 
-vector<coord_def> create_feat_splash(coord_def center, int radius, int num, int dur);
+set<coord_def> create_feat_splash(coord_def center, int radius, int num, int dur,
+                                  dungeon_feature_type new_feat = DNGN_SHALLOW_WATER);
 
 void init_zap_index();
 void clear_zap_info_on_exit();
@@ -371,4 +387,7 @@ int omnireflect_chance_denom(int SH);
 void glaciate_freeze(monster* mon, killer_type englaciator,
                              int kindex);
 
-bolt setup_targetting_beam(const monster &mons);
+void fill_petrify_chain_targets(const bolt& beam, coord_def centre,
+                                vector<coord_def> &targs, bool random);
+
+bolt setup_targeting_beam(const monster &mons);

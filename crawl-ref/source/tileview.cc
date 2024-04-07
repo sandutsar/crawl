@@ -18,6 +18,7 @@
 #include "kills.h"
 #include "level-state-type.h"
 #include "mon-util.h"
+#include "movement.h"
 #include "options.h"
 #include "pcg.h"
 #include "player.h"
@@ -438,7 +439,8 @@ tileidx_t pick_dngn_tile(tileidx_t idx, int value, int domino)
     for (size_t i = 0; i < weights.size(); ++i)
     {
         rand -= weights[i];
-        if (rand < 0) return idx + i;
+        if (rand < 0)
+            return idx + i;
     }
 
     return idx;
@@ -873,8 +875,7 @@ static tileidx_t _get_floor_bg(const coord_def& gc)
 
         if (is_unknown_stair(gc)
             && env.map_knowledge(gc).feat() != DNGN_ENTER_ZOT
-            && !(player_in_hell()
-                 && env.map_knowledge(gc).feat() == DNGN_ENTER_HELL))
+            && !feat_is_hell_subbranch_exit(env.map_knowledge(gc).feat()))
         {
             bg |= TILE_FLAG_NEW_STAIR;
         }
@@ -899,6 +900,7 @@ void tile_draw_floor()
             tile_env.bg(ep) = bg;
             tile_env.fg(ep) = 0;
             tile_env.cloud(ep) = 0;
+            tile_env.icons.erase(ep);
         }
 }
 
@@ -1021,12 +1023,20 @@ static void _tile_place_monster(const coord_def &gc, const monster_info& mon)
         return;
     }
     tile_env.fg(ep) = t;
+    tile_env.icons[ep] = status_icons_for(mon);
 
     // Add name tags.
     if (!mons_class_gives_xp(mon.type))
         return;
 
-    const tag_pref pref = Options.tile_tag_pref;
+    const tag_pref pref =
+        Options.tile_tag_pref == TAGPREF_AUTO
+            ? ((crawl_state.game_is_tutorial() || crawl_state.game_is_hints())
+                    ? TAGPREF_TUTORIAL
+                    : crawl_state.game_is_arena()
+                    ? TAGPREF_NAMED
+                    : TAGPREF_ENEMY)
+            : Options.tile_tag_pref;
     if (pref == TAGPREF_NONE)
         return;
     else if (pref == TAGPREF_TUTORIAL)
@@ -1037,10 +1047,10 @@ static void _tile_place_monster(const coord_def &gc, const monster_info& mon)
         if (!mon.is_named() && kills > limit)
             return;
     }
-    else if (!mon.is_named())
+    else if (pref != TAGPREF_ALL && !mon.is_named())
         return;
 
-    if (pref != TAGPREF_NAMED && mon.attitude == ATT_FRIENDLY)
+    if (pref != TAGPREF_NAMED && pref != TAGPREF_ALL &&  mon.attitude == ATT_FRIENDLY)
         return;
 
     tiles.add_text_tag(TAG_NAMED_MONSTER, mon);
@@ -1072,8 +1082,10 @@ void tile_draw_map_cell(const coord_def& gc, bool foreground_only)
 
     if (you.see_cell(gc))
     {
-        tile_env.fg(grid2show(gc)) = 0;
-        tile_env.cloud(grid2show(gc)) = 0;
+        const coord_def ep = grid2show(gc);
+        tile_env.fg(ep) = 0;
+        tile_env.cloud(ep) = 0;
+        tile_env.icons.erase(ep);
     }
 
     const map_cell& cell = env.map_knowledge(gc);
@@ -1117,8 +1129,15 @@ void tile_apply_animations(tileidx_t bg, tile_flavour *flv)
 {
 #ifndef USE_TILE_WEB
     tileidx_t bg_idx = bg & TILE_FLAG_MASK;
-    if (bg_idx == TILE_DNGN_PORTAL_WIZARD_LAB && Options.tile_misc_anim)
+
+    // Wizlab entries and conduits both have spinning sequential cycle
+    // tile animations.
+    if (bg_idx == TILE_DNGN_PORTAL_WIZARD_LAB ||
+        (bg_idx >= TILE_ARCANE_CONDUIT && bg_idx < TILE_DNGN_SARCOPHAGUS_SEALED)
+        && Options.tile_misc_anim)
+    {
         flv->special = (flv->special + 1) % tile_dngn_count(bg_idx);
+    }
     else if (bg_idx == TILE_DNGN_LAVA && Options.tile_water_anim)
     {
         // Lava tiles are four sets of four tiles (the second and fourth
@@ -1132,7 +1151,11 @@ void tile_apply_animations(tileidx_t bg, tile_flavour *flv)
     {
         flv->special = random2(256);
     }
-    else if (bg_idx >= TILE_DNGN_ENTER_ZOT_CLOSED && bg_idx < TILE_BLOOD
+    // This includes branch / portal entries and exits, altars, runelights, and
+    // fountains in the first range, and some randomly-animated weighted
+    // vault statues in the second statues.
+    else if (((bg_idx >= TILE_DNGN_ENTER_ZOT_CLOSED && bg_idx < TILE_DNGN_CACHE_OF_FRUIT)
+             || (bg_idx >= TILE_DNGN_SILVER_STATUE && bg_idx < TILE_ARCANE_CONDUIT))
              && Options.tile_misc_anim)
     {
         flv->special = random2(256);
@@ -1312,6 +1335,28 @@ void apply_variations(const tile_flavour &flv, tileidx_t *bg,
         if (orig == TILE_DNGN_STONE_WALL)
             orig = TILE_STONE_WALL_SHOALS;
     }
+    else if (player_in_branch(BRANCH_DEPTHS))
+    {
+        if (orig == TILE_DNGN_STONE_WALL)
+            orig = TILE_STONE_WALL_DEPTHS;
+    }
+    else if (player_in_branch(BRANCH_ZOT))
+    {
+        if (orig == TILE_DNGN_CRYSTAL_WALL)
+            orig = TILE_CRYSTAL_WALL_ZOT;
+        else if (orig == TILE_DNGN_STONE_WALL)
+        {
+        /* Matches hall_of_zot 2 through 5. */
+            if (you.depth == 2)
+                orig = TILE_DNGN_STONE_WALL_BLUE;
+            else if (you.depth == 3)
+                orig = TILE_DNGN_STONE_WALL_LIGHTBLUE;
+            else if (you.depth == 4)
+                orig = TILE_DNGN_STONE_WALL_MAGENTA;
+            else if (you.depth == 5)
+                orig = TILE_DNGN_STONE_WALL_LIGHTMAGENTA;
+        }
+    }
 
     if (orig == TILE_FLOOR_NORMAL)
         *bg = flv.floor;
@@ -1396,10 +1441,15 @@ void tile_apply_properties(const coord_def &gc, packed_cell &cell)
     const map_cell& mc = env.map_knowledge(gc);
 
     bool print_blood = true;
-    if (mc.flags & MAP_UMBRAED)
+    if (mc.flags & MAP_HALOED)
+    {
+        if (mc.flags & MAP_UMBRAED)
+            cell.halo = HALO_NONE;
+        else
+            cell.halo = HALO_RANGE;
+    }
+    else if (mc.flags & MAP_UMBRAED)
         cell.halo = HALO_UMBRA;
-    else if (mc.flags & MAP_HALOED)
-        cell.halo = HALO_RANGE;
     else
         cell.halo = HALO_NONE;
 
@@ -1429,6 +1479,9 @@ void tile_apply_properties(const coord_def &gc, packed_cell &cell)
     if ((mc.flags & MAP_SANCTUARY_1) || (mc.flags & MAP_SANCTUARY_2))
         cell.is_sanctuary = true;
 
+    if (mc.flags & MAP_BLASPHEMY)
+        cell.is_blasphemy = true;
+
     if (mc.flags & MAP_SILENCED)
         cell.is_silenced = true;
 
@@ -1439,16 +1492,17 @@ void tile_apply_properties(const coord_def &gc, packed_cell &cell)
     if (mc.flags & MAP_ORB_HALOED)
         cell.orb_glow = get_orb_phase(gc) ? 2 : 1;
 
-#if TAG_MAJOR_VERSION == 34
-    if (mc.flags & MAP_HOT)
-        cell.heat_aura = 1 + random2(3);
-#endif
-
     if (mc.flags & MAP_QUAD_HALOED)
         cell.quad_glow = true;
 
     if (mc.flags & MAP_DISJUNCT)
         cell.disjunct = get_disjunct_phase(gc);
+
+    if (mc.flags & MAP_BFB_CORPSE)
+        cell.has_bfb_corpse = true;
+
+    if (you.rampage_hints.count(gc) > 0)
+        cell.bg |= TILE_FLAG_RAMPAGE;
 
     if (Options.show_travel_trail)
     {
@@ -1479,17 +1533,10 @@ void tile_apply_properties(const coord_def &gc, packed_cell &cell)
                 break;
             }
     }
-    else if (env.level_state & LSTATE_ICY_WALL)
+    else if (env.level_state & LSTATE_ICY_WALL
+             && env.map_knowledge(gc).flags & MAP_ICY)
     {
-        for (adjacent_iterator ai(gc); ai; ++ai)
-        {
-            if (feat_is_wall(env.map_knowledge(*ai).feat())
-                && env.map_knowledge(*ai).flags & MAP_ICY)
-            {
-                cell.flv.floor = TILE_FLOOR_ICY;
-                break;
-            }
-        }
+        cell.flv.floor = TILE_FLOOR_ICY;
     }
 }
 #endif

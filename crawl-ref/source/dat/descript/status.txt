@@ -7,11 +7,9 @@ Invis status
 
 You are invisible. Most enemies will be unable to see you and will suffer
 penalties to hit, though they may be able to guess at your general location.
-This causes magical contamination over time, and may cause dangerous levels of
-contamination if you were already contaminated before gaining this status. If
-the status is greyed out, it is active (and causing contamination) but
-ineffective for some reason (for example if you are glowing with contamination
-or standing in shallow water).
+If the status is greyed out, it is active but ineffective for some reason (for
+example if you are glowing with magical contamination or standing in shallow
+water).
 %%%%
 Tele status
 
@@ -47,9 +45,10 @@ temporary regeneration.
 
 Your health has stopped regenerating due to the presence of nearby monsters.
 %%%%
-RMsl status
+MPRegen status
 
-You repel missiles, improving your chance to evade them.
+You regenerate health and magic at an unnaturally fast rate. This is only shown
+for temporary regeneration.
 %%%%
 Touch status
 
@@ -59,6 +58,12 @@ hit.
 Will++ status
 
 Your willpower is much stronger, protecting against many magical effects.
+%%%%
+Regen Will++ status
+
+Trog's Hand is simultaneously making you regenerate health at an unnaturally
+fast rate and strengthening your willpower to protect you against many magical
+effects.
 %%%%
 Berserk status
 
@@ -71,6 +76,14 @@ expires you will be slowed and unable to berserk again for a short duration.
 
 You are recovering from your berserk rage, and are unable to berserk again for
 a short duration.
+%%%%
+Bearserk status
+
+You are filled with barbearic rage! You are hasted, deal grizzly damage, and
+have greatly increased health, but find it impawsible to do much other than
+move and maul foes. You'll bid furwell to this status very quickly unless you
+are attacking, and when it expires you will be slowed and unable to bearserk
+again for a short duration.
 %%%%
 Pois status
 
@@ -92,14 +105,28 @@ is only a warning, and no mutation or loss of stealth will occur from it.
 %%%%
 Drain status
 
-Your maximum hit points have been temporarily drained by negative energy. This
+Your maximum health has been temporarily drained by negative energy. This
 status will not wear off by waiting, but will gradually expire as you gain
 experience.
 %%%%
-Breath status
+-Breath status
 
 You are catching your breath, and are unable to use your innate breath ability
 until the status expires.
+%%%%
+Breath status
+
+Indicates how many uses of your draconian breath weapon are available. If the
+indicator is dim, there are zero. Otherwise, the number of plusses indicate
+additional uses available.
+%%%%
+Breath+ status
+
+<Breath status>
+%%%%
+Breath++ status
+
+<Breath status>
 %%%%
 Exh status
 
@@ -125,11 +152,10 @@ try to struggle free.
 %%%%
 Constr status
 
-You are being constricted by an enemy and will take an increasing amount of
-damage over time. You are unable to move (or blink) away from the enemy,
-although you can struggle to escape by attempting to do so, and will become
-increasingly more likely to succeed and break the constriction when doing so
-multiple times.
+You are being constricted by an enemy. Your evasion is impaired, and you will
+take damage over time. You are unable to move away from the enemy, although you
+can struggle to escape by attempting to do so, and will become increasingly more
+likely to succeed and break the constriction when doing so multiple times.
 %%%%
 Mesm status
 
@@ -149,8 +175,8 @@ You are prevented from teleporting or blinking.
 %%%%
 -Move status
 
-You are prevented from moving, blinking, or teleporting. (You can still take
-other actions.)
+You cannot walk, fly around, slither, etc. You can still take other actions,
+and can still be moved via translocations or by being pushed, pulled, and so on.
 %%%%
 Mark status
 
@@ -160,8 +186,17 @@ are not in their vision.
 %%%%
 Fire status
 
-You are covered with sticky fire, which causes damage over a short duration.
-Entering water will extinguish the flames.
+You are covered with sticky fire, which causes damage over a moderate duration.
+Moving will quell the fire much more rapidly, and entering water will extinguish
+it immediately.
+%%%%
+Fire+ status
+
+<Fire status>
+%%%%
+Fire++ status
+
+<Fire status>
 %%%%
 Corona status
 
@@ -196,7 +231,7 @@ lost to the flaying.
 %%%%
 Weak status
 
-Your physical attacks do less damage.
+Your melee attacks do 25% less damage.
 %%%%
 Frozen status
 
@@ -315,11 +350,6 @@ Stealth status
 
 Your stealth is greatly increased.
 %%%%
-Mirror status
-
-You are reflecting any damage taken to your attackers, reducing piety depending
-on the amount of damage dealt.
-%%%%
 Vortex status
 
 You are in the eye of a mighty ice storm. After the vortex fades, it cannot be
@@ -348,21 +378,21 @@ Duel status
 You are duelling a foe in Okawaru's Arena, and will be returned whence you came
 if you are victorious.
 %%%%
-Prot status
-
-You are beseeching Elyvilon to save your life. If you are mortally wounded, the
-Healer may undo the killing blow. Killing others while asking for divine
-protection will cause penance.
-%%%%
 Disjoin status
 
-You are destabilizing space around yourself, causing nearby monsters to be
+You are destabilising space around yourself, causing nearby monsters to be
 randomly blinked away from you.
 %%%%
-Slay status
+Fugue status
 
-You have the blood of a were-beast, healing you and providing bonuses to
-your ranged and melee attacks which increase every time you slay a foe.
+Your weapon is temporarily enhanced by the souls of the damned, providing slaying
+bonuses that increase with every enemy killed. At the maximum bonus, foes adjacent
+to your attacks' targets suffer pain damage.
+%%%%
+Debt status
+
+You have lived beyond your means. You cannot spend gold again until you earn
+enough to cancel out your debt.
 %%%%
 Toxic status
 
@@ -388,10 +418,10 @@ rP- status
 
 You are more vulnerable to poison.
 %%%%
-PProj status
+Bullseye status
 
-You are teleporting fired or thrown missiles directly to their targets with
-increased accuracy, at the cost of a small amount of magic for each missile.
+You have targeted an enemy with a dimensional bullseye, causing missiles fired
+or thrown at a different enemy to also be teleported at the target.
 %%%%
 Forest status
 
@@ -466,38 +496,57 @@ Channel status
 
 You are channelling magical energy.
 %%%%
-Spider status
+Beast status
 
-You have been transformed into a venomous, spider-like creature. You become
-highly evasive and gain a poisonous bite, but gain vulnerability to poison.
+You have been transformed into a monstrous, furry were-beast. The ferocious
+energy pulsing through your limbs keeps you ready to kill.
 
-Any equipped weapons and armour are melded, and your success rate with spells
-is slightly reduced.
+Any gloves, cloaks, headgear and boots are melded.
+%%%%
+Flux status
+
+You are unstable at a fundamental level. You inflict dangerous levels of
+magical contamination on foes with each touch. Sufficient contamination
+causes a highly localized meltdown, dealing enormous damage.
+
+However, this instability makes you unable to use weapons, shields, or
+body armour. You also glow, reducing stealth and preventing invisibility,
+and you do less damage in melee, as your limbs sometimes destabilise mid-swing.
 %%%%
 Blade status
 
-Long, scythe-shaped blades have grown from your hands, increasing your melee
-damage significantly.
+{{
+    local hands = you.hand() .. "s"
+    return "Long, needle-thin blades have grown from your " .. hands
+}}, and smaller fragments of metal have grown inside your body, deforming you
+and reducing the effectiveness of body armour.
 
-Any equipped weapons are melded, and your success rate with spells is somewhat
-reduced.
+Any equipped weapons, shields, and gloves are melded.
+%%%%
+Serpent status
+
+You have been transformed into a giant, cold-blooded, poison-resistant serpent,
+ready to wind your coils around foes and crush them to death.
+
+Any equipped weapons and armour are melded.
+%%%%
+Maw status
+
+Your midsection has transformed into a giant mouth, gnashing and ready to devour
+foes. The mouth may devour slain creatures, healing you to an extent increased
+by your Shapeshifting skill and the power of the creature eaten. Skill also
+increases the damage done by the maw.
+
+While transformed, any body armour is melded.
 %%%%
 Statue status
 
 You have been transformed into a slow but extremely robust stone statue.
 Your melee damage, both unarmed and with weapons, is substantially increased.
-Your stone body is insulated from electricity and gains resistance to poison,
-and negative energy.
+Your stone body is immune to poison and miasma, and gains resistance to
+electricity, negative energy and torment.
 
 Any equipped body armour, gloves and boots are melded.
-%%%%
-Ice status
-
-You have been transformed into a frozen ice-creature, light enough to float on
-water. You gain a freezing melee attack, and are incredibly resistant to cold
-and resistant to poison, but vulnerable to fire.
-
-Any equipped weapons and armour are melded.
 %%%%
 Dragon status
 
@@ -535,15 +584,25 @@ less evasive.
 
 Any equipped weapons and armour are melded.
 %%%%
-Lich status
+Storm status
 
-You have been transformed into a lich. You are resistant to cold and hostile
-enchantments and completely immune to poison, negative energy and torment for
-the duration of the transformation.
+You have been transformed into a lightning-filled tempest. Your melee attacks
+are strengthened and electrified, and strike all adjacent foes. You gain flight,
+increased evasion, immunity to poison, miasma, petrification, and constriction,
+and resistance to electricity. You gain the ability to launch yourself at foes
+as a lightning bolt.
 
-Your necromancy spells are increased in power, and you gain a draining melee
-attack. However, you are also vulnerable to holy damage and Dispel Undead,
-and are unable to consume potions.
+Any equipped weapons and armour are melded.
+%%%%
+Death status
+
+You have been transformed into an undying offence against life itself.
+
+Foes struck by your hands or melee weapons are weakened, slowed, and drained,
+and you can heal yourself by tormenting living foes nearby. You also resist
+cold, have enhanced willpower, and are immune to poison, miasma, negative
+energy, and torment. Unfortunately, you are vulnerable to holy damage and
+Dispel Undead, and cannot consume potions.
 %%%%
 Bat status
 
@@ -584,7 +643,7 @@ Tree status
 
 You have been transformed into a tree and are rooted to the ground, unable to
 move or teleport. You have minimal evasion but increased health and natural
-armour, and are resistant to poison and immune to torment.
+armour, and are resistant to poison, and immune to torment and drowning.
 
 Any equipped cloak, helmet, gloves, boots and body armour are melded.
 %%%%
@@ -621,8 +680,12 @@ maximum health is further drained when taking damage.
 Orb status
 
 You are near (or perhaps holding) the Orb of Zot, whose energies disrupt
-translocation magic. Teleportation will take longer, and Passage of Golubria
-portals will be less accurately positioned and expire more quickly.
+translocation magic. Teleportation will take longer.
+%%%%
+Orb? status
+
+You are holding the Charlatan's Orb, whose energies disrupt translocation
+magic. Teleportation will take longer.
 %%%%
 -Hop status
 
@@ -632,9 +695,10 @@ casting spells, are fine.)
 %%%%
 Ray status
 
-You are currently channelling a ray of searing magical energy. Pressing . will
-maintain and intensify the ray, at the cost of 1 MP per turn; any other action,
-including recasting the spell, will end it.
+You are currently channelling a ray of searing magical energy. Pressing
+<w>.</w> or <w>s</w> to wait in place will maintain and intensify the ray, at
+the cost of 1 MP per turn. Any other action, including recasting the spell,
+will end it.
 %%%%
 Ray+ status
 
@@ -650,7 +714,7 @@ You are moving at supernatural speed, causing movement actions to become
 instant. Any martial attacks made while moving in this way deal increased
 damage and never miss.
 %%%%
-Storm status
+Heavenly status
 
 You are surrounded by a storm of heavenly clouds. While the storm rages, your
 evasion and combat accuracy and damage are substantially increased, and
@@ -672,8 +736,8 @@ You receive spellcasting and slaying bonuses that scale with your health.
 %%%%
 Beogh status
 
-You can swear fealty to Beogh, the god of cave orcs, through a nearby priest.
-To do so, press <white>Y</white> on the <white>a</white>bility menu.
+You can swear fealty to Beogh, the god of all orcs, through a nearby priest.
+To do so, use the Convert to Beogh ability in the ability menu.
 %%%%
 Bloodless status
 
@@ -735,14 +799,19 @@ Enemies are magically translocated toward you. (This won't wake them up.)
 %%%%
 Zot status
 
-You have spent too much time in one branch, allowing the malevolent entity Zot to
-notice you. If you spend the indicated number of turns in the branch without
-descending to a new floor, Zot will find and consume you.
+You have spent too much time in one branch, allowing the malevolent power of Zot
+to notice you. If you spend the indicated number of turns in the branch without
+descending to a new floor, Zot will find you, causing permanent health damage.
 %%%%
 Zot count status
 
 If you spend the indicated number of turns in this branch without descending to
-a new floor, Zot will find and consume you.
+a new floor, Zot will find you, causing permanent health damage.
+%%%%
+Gem status
+
+If you spend the indicated number of turns in this branch, its gem will be found
+and shattered by the power of Zot.
 %%%%
 Curl status
 
@@ -768,9 +837,10 @@ for a short duration.
 %%%%
 Charge- status
 
-You are currently channeling electrical charge. Pressing . will
-maintain and continue this process until it discharges; any other action,
-including recasting the spell, will dissipate the charge harmlessly.
+You are currently channeling electrical charge. Pressing <w>.</w> or <w>s</w>
+to wait in place will maintain and continue this process until it discharges.
+Any other action, including recasting the spell, will dissipate the charge
+harmlessly.
 %%%%
 Charge/ status
 
@@ -786,11 +856,134 @@ Charge| status
 %%%%
 Wave status
 
-You are currently channeling a wave of flames. Pressing . will
-maintain and intensify the ray, at the cost of 1 MP per turn; any other action,
-including recasting the spell, will end it.
+You are currently channeling waves of flames. Pressing <w>.</w> or <w>s</w>
+to wait in place will maintain and intensify the waves, at the cost of 1 MP per
+turn. Any other action, including recasting the spell, will end it.
 %%%%
 Wave+ status
 
 <Wave status>
+%%%%
+Ramparts status
+
+You are encasing nearby walls in ice. The ice will crack and fall away if you
+move to a new position.
+%%%%
+Bog status
+
+You are creating a toxic bog in the nearby area, and are immune to its effects.
+You cannot sustain this transformation in areas out of your line of sight.
+%%%%
+Enlightened status
+
+You are in touch with a greater truth, increasing your resistance to effects
+which target your willpower. Tragically, this epiphany won't last.
+%%%%
+Will+ status
+
+<Enlightened status>
+%%%%
+Reap status
+
+The dead are hopping! Living creatures you kill may rise as zombified servants.
+%%%%
+Peek status
+
+You are peering down the stairs. You can freely return to the previous level, but
+once you take any action on this floor, all stairs leading back up will collapse.
+%%%%
+Fragile status
+
+Your body is as fragile and brittle as glass, increasing the damage you take from
+all sources.
+%%%%
+Ooze status
+
+Acidic ooze creeps out of the walls around you. Each turn, foes are damaged
+depending on the number of slimy walls they remain adjacent to.
+%%%%
+Dog status
+
+You have summoned your canine familiar.
+%%%%
+-Dog status
+
+Your canine familiar is recovering from its injuries, and cannot be summoned
+again for a short time.
+%%%%
+-Siphon status
+
+You have recently siphoned the essence of the living, and cannot do so again for
+a short time.
+%%%%
+-Word status
+
+You are fatigued from recently speaking a word of chaos, and are unable to do so
+again for a short time.
+%%%%
+Jinx status
+
+Jinxing spirits encircle you. When you attack foes, those who fail a Will check
+are jinxed, taking damage and becoming drained. The spirits depart quickly when
+no foes are in sight.
+%%%%
+Rise status
+
+You are hovering upward toward the ceiling. After a short delay, Ignis' power
+will blast you into the level above.
+%%%%
+Challenge status
+
+You have been challenged by a chosen Apostle of Beogh, who will know your
+location no matter where on the floor you are. Defeat them, and you may recruit
+them to join you. If you flee the floor, Beogh will punish you by temporarily
+depriving you of allies.
+%%%%
+Vengeance status
+
+One of your apostles has been killed, and you have not yet killed all foes who
+were involved in their death. If you do so, Beogh will resurrect them sooner.
+%%%%
+Pray status
+
+You have invoked divine aid in avenging the death of a fallen apostle. Orcs will
+continuously rally to your side, though your prayer will end more rapidly when
+there are no more foes around to fight.
+%%%%
+Recruit status
+
+An orcish apostle is available to recruit as a permanent companion.
+(Use the Recruit Apostle ability)
+%%%%
+Torch status
+
+You carry the Black Torch. If this indicator is dark, the torch is unlit; if it
+is bright, you have called upon Yredelemnul to light the torch. So long as the
+torch burns, you will gain piety for kills. With sufficient piety, you will be
+able to use its umbral fire to empower your undead servants and damage your
+enemies.
+%%%%
+Shackles status
+
+Yredelemnul's grip is engulfing an area in life-stealing chains.
+%%%%
+Rev status
+
+You're starting to limber up. Your weapon-based and unarmed attacks are closer
+to full strength, and will continue to grow more powerful with each swing.
+%%%%
+Rev+ status
+
+You're limbering up. Your weapon-based and unarmed attacks are close to full
+strength, and will continue to grow more powerful with each swing.
+%%%%
+Rev* status
+
+You're limbered up. Your weapon-based and unarmed attacks are at full strength,
+and will remain so as long as you keep swinging and for a short while afterward.
+%%%%
+Stiff status
+
+Your legs have stiffened up from lack of motion, making your next move twice as
+slow as usual. This only affects movement actions.
 %%%%

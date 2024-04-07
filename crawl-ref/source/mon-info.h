@@ -5,6 +5,7 @@
 
 #include "enchant-type.h"
 #include "mon-util.h"
+#include "options.h"
 #include "tag-version.h"
 
 using std::vector;
@@ -51,9 +52,11 @@ enum monster_info_flags
     MB_PETRIFIED,
     MB_LOWERED_WL,
     MB_POSSESSABLE,
-    MB_ENSLAVED,
+#if TAG_MAJOR_VERSION == 34
+    MB_OLD_ENSLAVED,
+#endif
     MB_SWIFT,
-    MB_INSANE,
+    MB_FRENZIED,
     MB_SILENCING,
     MB_MESMERIZING,
 #if TAG_MAJOR_VERSION == 34
@@ -61,8 +64,8 @@ enum monster_info_flags
 #endif
     MB_SHAPESHIFTER,
     MB_CHAOTIC,
-    MB_SUBMERGED,
 #if TAG_MAJOR_VERSION == 34
+    MB_SUBMERGED,
     MB_BLEEDING,
 #endif
 #if TAG_MAJOR_VERSION == 34
@@ -190,7 +193,7 @@ enum monster_info_flags
     MB_CLOUD_RING_MUTATION,
     MB_CLOUD_RING_FOG,
     MB_CLOUD_RING_ICE,
-    MB_CLOUD_RING_DRAINING,
+    MB_CLOUD_RING_MISERY,
     MB_CLOUD_RING_ACID,
     MB_CLOUD_RING_MIASMA,
     MB_WITHERING,
@@ -199,6 +202,31 @@ enum monster_info_flags
     MB_CANT_DRAIN,
     MB_CONCENTRATE_VENOM,
     MB_FIRE_CHAMPION,
+    MB_SILENCE_IMMUNE,
+    MB_ANTIMAGIC,
+    MB_NO_ATTACKS,
+    MB_RES_DROWN,
+    MB_ANGUISH,
+    MB_CLARITY,
+    MB_DISTRACTED_ONLY,
+    MB_CANT_SEE_YOU,
+    MB_UNBLINDABLE,
+    MB_SIMULACRUM,
+    MB_REFLECTING,
+    MB_TELEPORTING,
+    MB_CONTAM_LIGHT,
+    MB_CONTAM_HEAVY,
+#if TAG_MAJOR_VERSION == 34
+    MB_PURSUING,
+#endif
+    MB_BOUND,
+    MB_BULLSEYE_TARGET,
+    MB_VITRIFIED,
+    MB_CURSE_OF_AGONY,
+    MB_RETREATING,
+    MB_TOUCH_OF_BEOGH,
+    MB_AWAITING_RECRUITMENT,
+    MB_VENGEANCE_TARGET,
     NUM_MB_FLAGS
 };
 
@@ -218,6 +246,7 @@ struct monster_info_base
         int is_active;   ///< Whether this ballisto is active or not
     };
     int _colour;
+    int ghost_colour;
     mon_attitude_type attitude;
     mon_threat_level_type threat;
     mon_dam_level_type dam;
@@ -231,6 +260,7 @@ struct monster_info_base
     int ac;
     int ev;
     int base_ev;
+    int sh;
     int mr;
     resists_t mresists;
     bool can_see_invis;
@@ -244,6 +274,9 @@ struct monster_info_base
     mon_attack_def attack[MAX_NUM_ATTACKS];
     bool can_go_frenzy;
     bool can_feel_fear;
+    bool sleepwalking;
+    bool backlit;
+    bool umbraed;
 
     uint32_t client_id;
 };
@@ -316,10 +349,11 @@ struct monster_info : public monster_info_base
         return get_damage_level_string(holi, dam);
     }
     string get_max_hp_desc() const;
+    int regen_rate(int scale) const;
 
     inline bool neutral() const
     {
-        return attitude == ATT_NEUTRAL || attitude == ATT_GOOD_NEUTRAL || attitude == ATT_STRICT_NEUTRAL;
+        return attitude == ATT_NEUTRAL || attitude == ATT_GOOD_NEUTRAL;
     }
 
     string db_name() const;
@@ -374,6 +408,7 @@ struct monster_info : public monster_info_base
     reach_type reach_range(bool items = true) const;
 
     size_type body_size() const;
+    bool net_immune() const;
 
     // These should be kept in sync with the actor equivalents
     // (Maybe unify somehow?)
@@ -397,13 +432,19 @@ struct monster_info : public monster_info_base
         return props.exists(PRIEST_KEY);
     }
 
+    bool fellow_slime() const;
+
+    vector<string> get_unusual_items() const;
+    bool has_unusual_items() const;
+
     bool has_spells() const;
+    bool antimagic_susceptible() const;
     int spell_hd(spell_type spell = SPELL_NO_SPELL) const;
     unsigned colour(bool base_colour = false) const;
     void set_colour(int colour);
 
     bool has_trivial_ench(enchant_type ench) const;
-    bool debuffable() const;
+    bool unravellable() const;
 
 protected:
     string _core_name() const;
@@ -412,7 +453,7 @@ protected:
 };
 
 // Colour should be between -1 and 15 inclusive!
-bool set_monster_list_colour(string key, int colour);
+bool set_monster_list_colour(monster_list_colour_type, int colour);
 void clear_monster_list_colours();
 
 void get_monster_info(vector<monster_info>& mons);

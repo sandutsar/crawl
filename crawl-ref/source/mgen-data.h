@@ -4,6 +4,7 @@
 #include "coord.h"
 #include "god-type.h"
 #include "mgen-enum.h"
+#include "mon-enum.h"
 #include "mon-flags.h"
 #include "xp-tracking-type.h"
 
@@ -15,8 +16,6 @@
 #define MGEN_NUM_HEADS "num_heads"
 #define MGEN_BLOB_SIZE "blob_size"
 #define MGEN_TENTACLE_CONNECT "tentacle_connect"
-/// doesn't automatically perish over time (for pillars of salt, blocks of ice)
-#define MGEN_NO_AUTO_CRUMBLE "no_auto_crumble"
 
 // A structure with all the data needed to whip up a new monster.
 struct mgen_data
@@ -173,6 +172,9 @@ struct mgen_data
         ASSERT(summon_type == 0 || abjuration_dur >= 1 && abjuration_dur <= 6
                || cls == MONS_BALL_LIGHTNING || cls == MONS_ORB_OF_DESTRUCTION
                || cls == MONS_BATTLESPHERE || cls == MONS_BALLISTOMYCETE_SPORE
+               || cls == MONS_BOULDER
+               || summon_type == SPELL_ANIMATE_DEAD
+               || summon_type == SPELL_NECROTISE
                || summon_type == SPELL_DEATH_CHANNEL
                || summon_type == SPELL_BIND_SOULS
                || summon_type == SPELL_SIMULACRUM
@@ -180,7 +182,8 @@ struct mgen_data
                || summon_type == SPELL_FULMINANT_PRISM
                || summon_type == SPELL_INFESTATION
                || summon_type == SPELL_FOXFIRE
-               || summon_type == SPELL_MARSHLIGHT);
+               || summon_type == SPELL_MARSHLIGHT
+               || summon_type == MON_SUMM_AID);
         return *this;
     }
 

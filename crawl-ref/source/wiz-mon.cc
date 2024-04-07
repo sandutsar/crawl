@@ -273,8 +273,6 @@ void debug_list_monsters()
         {
             continue;
         }
-        if (mi->flags & MF_PACIFIED)
-            exp /= 2;
 
         total_adj_exp += exp;
     }
@@ -301,72 +299,6 @@ void debug_list_monsters()
         mprf("%d monsters, %d total exp value (%d non-uniq, %d adjusted)",
              nfound, total_exp, total_nonuniq_exp, total_adj_exp);
     }
-}
-
-void wizard_spawn_control()
-{
-    mprf(MSGCH_PROMPT, "(c)hange spawn rate or (s)pawn monsters? ");
-    const int c = toalower(getchm());
-
-    char specs[256];
-    bool done = false;
-
-    if (c == 'c')
-    {
-        mprf(MSGCH_PROMPT, "Set monster spawn rate to what? (now %d, lower value = higher rate) ",
-             env.spawn_random_rate);
-
-        if (!cancellable_get_line(specs, sizeof(specs)))
-        {
-            const int rate = atoi(specs);
-            if (rate || specs[0] == '0')
-            {
-                mprf("Setting monster spawn rate to %i.", rate);
-                env.spawn_random_rate = rate;
-                done = true;
-            }
-        }
-    }
-    else if (c == 's')
-    {
-        // 50 spots are reserved for non-wandering monsters.
-        int max_spawn = MAX_MONSTERS - 50;
-        for (monster_iterator mi; mi; ++mi)
-            if (mi->alive())
-                max_spawn--;
-
-        if (max_spawn <= 0)
-        {
-            mprf(MSGCH_PROMPT, "Level already filled with monsters, "
-                               "get rid of some of them first.");
-            return;
-        }
-
-        mprf(MSGCH_PROMPT, "Spawn how many random monsters (max %d)? ",
-             max_spawn);
-
-        if (!cancellable_get_line(specs, sizeof(specs)))
-        {
-            const int num = min(atoi(specs), max_spawn);
-            if (num > 0)
-            {
-                mprf("Spawning %i monster%s.", num, num == 1 ? "" : "s");
-                int curr_rate = env.spawn_random_rate;
-                // Each call to spawn_random_monsters() will spawn one with
-                // the rate at 5 or less.
-                env.spawn_random_rate = 5;
-
-                for (int i = 0; i < num; ++i)
-                    spawn_random_monsters();
-
-                env.spawn_random_rate = curr_rate;
-                done = true;
-            }
-        }
-    }
-
-    if (!done)
-        canned_msg(MSG_OK);
 }
 
 static const char* ht_names[] =
@@ -426,17 +358,15 @@ void debug_stethoscope(int mon)
          ((mons.attitude == ATT_HOSTILE)        ? "hostile" :
           (mons.attitude == ATT_FRIENDLY)       ? "friendly" :
           (mons.attitude == ATT_NEUTRAL)        ? "neutral" :
-          (mons.attitude == ATT_GOOD_NEUTRAL)   ? "good neutral":
-          (mons.attitude == ATT_STRICT_NEUTRAL) ? "strictly neutral"
+          (mons.attitude == ATT_GOOD_NEUTRAL)   ? "good neutral"
                                                 : "unknown alignment"));
 
     // Print stats and other info.
     mprf(MSGCH_DIAGNOSTICS,
-         "HD=%d/%d (%u) HP=%d/%d AC=%d(%d) EV=%d(%d) WL=%d XP=%d SP=%d "
+         "HD=%d/%d HP=%d/%d AC=%d(%d) EV=%d(%d) WL=%d XP=%d SP=%d "
          "energy=%d%s%s mid=%u num=%d stealth=%d flags=%04" PRIx64,
          mons.get_hit_dice(),
          mons.get_experience_level(),
-         mons.experience,
          mons.hit_points, mons.max_hit_points,
          mons.base_armour_class(), mons.armour_class(),
          mons.base_evasion(), mons.evasion(),
@@ -451,8 +381,8 @@ void debug_stethoscope(int mon)
     if (mons.damage_total)
     {
         mprf(MSGCH_DIAGNOSTICS,
-             "pdam=%1.1f/%d (%d%%)",
-             0.5 * mons.damage_friendly, mons.damage_total,
+             "pdam=%d/%d (%d%%)",
+             mons.damage_friendly, mons.damage_total,
              50 * mons.damage_friendly / mons.damage_total);
     }
 
@@ -466,6 +396,7 @@ void debug_stethoscope(int mon)
          "firing_pos=(%d,%d) patrol_point=(%d,%d) god=%s%s",
          (hab >= 0 && hab < NUM_HABITATS) ? ht_names[hab] : "INVALID",
          mons.asleep()                    ? "sleep"
+         : mons.behaviour == BEH_BATTY   ? "flitting"
          : mons_is_wandering(mons)       ? "wander"
          : mons_is_seeking(mons)         ? "seek"
          : mons_is_fleeing(mons)         ? "flee"
@@ -531,7 +462,7 @@ void debug_stethoscope(int mon)
                 continue;
 
             // this is arguably redundant with mons_list::parse_mons_spells
-            // specificially the bit that turns names into flags
+            // specifically the bit that turns names into flags
             static const map<mon_spell_slot_flag, string> flagnames = {
                 { MON_SPELL_EMERGENCY,  "E" },
                 { MON_SPELL_NATURAL,    "N" },
@@ -670,36 +601,19 @@ void debug_make_monster_shout(monster* mon)
     mpr("== Done ==");
 }
 
-void wizard_gain_monster_level(monster* mon)
-{
-    // Give monster as much experience as it can hold,
-    // but cap the levels gained to just 1.
-    bool worked = mon->gain_exp(INT_MAX - mon->experience, 1);
-    if (!worked)
-        simple_monster_message(*mon, " seems unable to mature further.", MSGCH_WARN);
-
-    // (The gain_exp() method will chop the monster's experience down
-    // to half-way between its new level and the next, so we needn't
-    // worry about it being left with too much experience.)
-}
-
 void wizard_apply_monster_blessing(monster* mon)
 {
-    mprf(MSGCH_PROMPT, "Apply blessing of (B)eogh, The (S)hining One, or (R)andomly? ");
+    mprf(MSGCH_PROMPT, "Apply blessing of the (S)hining One? ");
 
     char type = (char) getchm(KMC_DEFAULT);
     type = toalower(type);
 
-    if (type != 'b' && type != 's' && type != 'r')
+    if (type != 's')
     {
         canned_msg(MSG_OK);
         return;
     }
-    god_type god = GOD_NO_GOD;
-    if (type == 'b' || type == 'r' && coinflip())
-        god = GOD_BEOGH;
-    else
-        god = GOD_SHINING_ONE;
+    god_type god = GOD_SHINING_ONE;
 
     if (!bless_follower(mon, god, true))
         mprf("%s won't bless this monster for you!", god_name(god).c_str());
@@ -799,6 +713,12 @@ void wizard_move_player_or_monster(const coord_def& where)
     crawl_state.cancel_cmd_again();
     crawl_state.cancel_cmd_repeat();
 
+    if (!in_bounds(where))
+    {
+        mpr("Cannot move out of bounds.");
+        return;
+    }
+
     static bool already_moving = false;
 
     if (already_moving)
@@ -844,60 +764,41 @@ void wizard_make_monster_summoned(monster* mon)
         return;
     }
 
-    mprf(MSGCH_PROMPT, "[a] clone [b] animated [c] chaos [d] miscast [e] zot");
-    mprf(MSGCH_PROMPT, "[f] wrath [h] aid   [m] misc    [s] spell");
-
-    mprf(MSGCH_PROMPT, "Which summon type? ");
-
-    char choice = toalower(getchm());
-
-    if (!(choice >= 'a' && choice <= 'h') && choice != 'm' && choice != 's')
+    vector<WizardEntry> choices =
     {
-        canned_msg(MSG_OK);
+        {'a', "clone", MON_SUMM_CLONE}, {'b', "animated", MON_SUMM_ANIMATE},
+        {'c', "chaos", MON_SUMM_CHAOS}, {'d', "miscast", MON_SUMM_MISCAST},
+        {'e', "zot", MON_SUMM_ZOT}, {'f', "wrath", MON_SUMM_WRATH},
+        {'h', "aid", MON_SUMM_AID}, {'m', "misc", 0},
+        {'s', "spell", 's'},
+    };
+
+    auto menu = WizardMenu("Which summon type (ESC to exit)?", choices);
+    if (!menu.run(true))
         return;
-    }
 
-    int type = 0;
-
-    switch (choice)
+    int type = menu.result();
+    if ('s' == type)
     {
-        case 'a': type = MON_SUMM_CLONE; break;
-        case 'b': type = MON_SUMM_ANIMATE; break;
-        case 'c': type = MON_SUMM_CHAOS; break;
-        case 'd': type = MON_SUMM_MISCAST; break;
-        case 'e': type = MON_SUMM_ZOT; break;
-        case 'f': type = MON_SUMM_WRATH; break;
-        case 'h': type = MON_SUMM_AID; break;
-        case 'm': type = 0; break;
+        char specs[80];
 
-        case 's':
+        msgwin_get_line("Cast which spell by name? ",
+                        specs, sizeof(specs));
+
+        if (specs[0] == '\0')
         {
-            char specs[80];
-
-            msgwin_get_line("Cast which spell by name? ",
-                            specs, sizeof(specs));
-
-            if (specs[0] == '\0')
-            {
-                canned_msg(MSG_OK);
-                return;
-            }
-
-            spell_type spell = spell_by_name(specs, true);
-            if (spell == SPELL_NO_SPELL)
-            {
-                mprf(MSGCH_PROMPT, "No such spell.");
-                return;
-            }
-            type = (int) spell;
-            break;
+            canned_msg(MSG_OK);
+            return;
         }
 
-        default:
-            die("Invalid summon type choice.");
-            break;
+        spell_type spell = spell_by_name(specs, true);
+        if (spell == SPELL_NO_SPELL)
+        {
+            mprf(MSGCH_PROMPT, "No such spell.");
+            return;
+        }
+        type = (int) spell;
     }
-
     mon->mark_summoned(dur, true, type);
     mpr("Monster is now summoned.");
 }
@@ -1138,7 +1039,7 @@ void debug_miscast(int target_index)
     }
 
     // Handle repeats ourselves since miscasts are likely to interrupt
-    // command repetions, especially if the player is the target.
+    // command repetitions, especially if the player is the target.
     int repeats = prompt_for_int("Number of repetitions? ", true);
     if (repeats < 1)
     {

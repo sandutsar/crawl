@@ -56,7 +56,8 @@ enum monclass_flag_type : uint64_t
     /// monster is stationary
     M_STATIONARY        = BIT(14),
 
-                        //BIT(15), // was M_BLOOD_SCENT
+    /// monster is immune to webs
+    M_WEB_IMMUNE        = BIT(15),
 
     /// susceptible to cold; drainable by vampires, splashes blood when hit
     M_COLD_BLOOD        = BIT(16),
@@ -70,8 +71,7 @@ enum monclass_flag_type : uint64_t
     /// monster digs through rock
     M_BURROWS           = BIT(19),
 
-    /// monster can submerge
-    M_SUBMERGES         = BIT(20),
+                         //BIT(20),
 
     /// monster is a unique
     M_UNIQUE            = BIT(21),
@@ -109,7 +109,9 @@ enum monclass_flag_type : uint64_t
     /// can do damage when attacked in melee
     M_SPINY             = BIT(32),
 
-                        //BIT(33),
+    // Prefers not to move closer to its foe if it's already in range to cast
+    // spells against it.
+    M_CAUTIOUS          = BIT(33),
 
     /// not a valid polymorph target (but can be polymorphed)
     M_NO_POLY_TO        = BIT(34),
@@ -117,12 +119,13 @@ enum monclass_flag_type : uint64_t
     /// An ancestor granted by Hepliaklqana
     M_ANCESTOR          = BIT(35),
 
-                        //BIT(36), // was M_ALWAYS_CORPSE
+    /// Gets a special name, like the Hellbinder
+    M_ALWAYS_NAMED      = BIT(36),
 
     /// prefer ranged attacks over melee
     M_PREFER_RANGED     = BIT(37),
 
-                        //BIT(38), // was M_ARTIFICIAL
+    M_REMNANT           = BIT(38),
 
     /// can survive without breathing; immune to asphyxiation and Mephitic Cloud
     M_UNBREATHING       = BIT(39),
@@ -213,16 +216,15 @@ enum monster_flag_type : uint64_t
     /// Was in view during previous turn.
     MF_WAS_IN_VIEW        = BIT(10),
 
-    /// Created as a member of a band
-    MF_BAND_MEMBER        = BIT(11),
+    /// Created as a member of a band (and not the leader)
+    MF_BAND_FOLLOWER      = BIT(11),
     /// Monter has been pacified
     MF_PACIFIED           = BIT(12),
     /// Consider this monster to have MH_UNDEAD holiness, regardless
     /// of its actual type
     MF_FAKE_UNDEAD        = BIT(13),
-    /// An undead monster soul enslaved by
-    /// Yredelemnul's power
-    MF_ENSLAVED_SOUL      = BIT(14),
+
+    MF_PENDING_REVIVAL    = BIT(14),
 
     /// mname is a suffix.
     MF_NAME_SUFFIX        = BIT(15),
@@ -272,8 +274,8 @@ enum monster_flag_type : uint64_t
     MF_SENSED             = BIT(33),
     /// mname should not be used for corpses
     MF_NAME_NOCORPSE      = BIT(34),
-    /// known to have a ranged attack
-    MF_SEEN_RANGED        = BIT(35),
+
+    // MF_SEEN_RANGED     = BIT(35), // was known to have a ranged attack
 
     /// this monster has been polymorphed.
     MF_POLYMORPHED        = BIT(36),
@@ -281,6 +283,14 @@ enum monster_flag_type : uint64_t
     MF_JUST_SLEPT         = BIT(37),
     /// possibly got piety with TSO
     MF_TSO_SEEN           = BIT(38),
+
+    /// Part of an orc apostle band
+    MF_APOSTLE_BAND       = BIT(39),
+
+    // MF_BAND_LEADER      = BIT(40) // Created as the leader of a band
+
+    /// Will prefer not to approach enemies it's already in spellcast range of
+    MF_CAUTIOUS           = BIT(41),
 };
 DEF_BITFIELD(monster_flags_t, monster_flag_type);
 

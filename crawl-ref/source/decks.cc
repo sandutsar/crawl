@@ -51,7 +51,6 @@
 #include "spl-goditem.h"
 #include "spl-miscast.h"
 #include "spl-monench.h"
-#include "spl-wpnench.h"
 #include "state.h"
 #include "stringutil.h"
 #include "tag-version.h"
@@ -294,6 +293,7 @@ bool gift_cards()
 {
     const int deal = random_range(MIN_GIFT_CARDS, MAX_GIFT_CARDS);
     bool dealt_cards = false;
+    set<deck_type> sufficiency;
 
     for (int i = 0; i < deal; i++)
     {
@@ -301,11 +301,26 @@ bool gift_cards()
                                         3, DECK_OF_DESTRUCTION,
                                         1, DECK_OF_SUMMONING,
                                         1, DECK_OF_ESCAPE);
-        if (deck_cards(choice) < all_decks[choice].deck_max)
+        if (deck_cards(choice) >= all_decks[choice].deck_max)
         {
-            you.props[deck_name(choice)]++;
-            dealt_cards = true;
+            sufficiency.insert(choice);
+            continue;
         }
+        you.props[deck_name(choice)]++;
+        dealt_cards = true;
+    }
+    if (!dealt_cards)
+    {
+        vector<string> deck_names;
+        for (deck_type deck : sufficiency)
+        {
+            const deck_type_data *deck_data = map_find(all_decks, deck);
+            deck_names.push_back(deck_data ? deck_data->name : "bugginess");
+        }
+        mprf(MSGCH_GOD, you.religion,
+             "%s goes to deal, but finds you have enough %s cards.",
+             god_name(you.religion).c_str(),
+             join_strings(deck_names.begin(), deck_names.end(), " and ").c_str());
     }
 
     return dealt_cards;
@@ -405,19 +420,19 @@ static void _describe_cards(CrawlVector& cards)
 #ifdef USE_TILE
         auto icon = make_shared<Image>();
         icon->set_tile(tile_def(TILEG_NEMELEX_CARD));
-        title_hbox->add_child(move(icon));
+        title_hbox->add_child(std::move(icon));
 #endif
         auto title = make_shared<Text>(formatted_string(name, WHITE));
         title->set_margin_for_sdl(0, 0, 0, 10);
-        title_hbox->add_child(move(title));
+        title_hbox->add_child(std::move(title));
         title_hbox->set_cross_alignment(Widget::CENTER);
         title_hbox->set_margin_for_crt(first ? 0 : 1, 0);
         title_hbox->set_margin_for_sdl(first ? 0 : 20, 0);
-        vbox->add_child(move(title_hbox));
+        vbox->add_child(std::move(title_hbox));
 
         auto text = make_shared<Text>(desc);
         text->set_wrap_text(true);
-        vbox->add_child(move(text));
+        vbox->add_child(std::move(text));
 
 #ifdef USE_TILE_WEB
         tiles.json_open_object();
@@ -432,7 +447,7 @@ static void _describe_cards(CrawlVector& cards)
     vbox->max_size().width = tiles.get_crt_font()->char_width()*80;
 #endif
 
-    scroller->set_child(move(vbox));
+    scroller->set_child(std::move(vbox));
     auto popup = make_shared<ui::Popup>(scroller);
 
     bool done = false;
@@ -447,7 +462,7 @@ static void _describe_cards(CrawlVector& cards)
     popup->on_layout_pop([](){ tiles.pop_ui_layout(); });
 #endif
 
-    ui::run_layout(move(popup), done);
+    ui::run_layout(std::move(popup), done);
 }
 
 string deck_status(deck_type deck)
@@ -516,8 +531,10 @@ static char _deck_hotkey(deck_type deck)
 
 static deck_type _choose_deck(const string title = "Draw")
 {
+    // TODO: refactor this into a subclass?
     ToggleableMenu deck_menu(MF_SINGLESELECT
-            | MF_NO_WRAP_ROWS | MF_TOGGLE_ACTION | MF_ALWAYS_SHOW_MORE);
+            | MF_NO_WRAP_ROWS | MF_TOGGLE_ACTION
+            | MF_ARROWS_SELECT | MF_INIT_HOVER);
     {
         ToggleableMenuEntry* me =
             new ToggleableMenuEntry(make_stringf("%s which deck?        "
@@ -528,12 +545,15 @@ static deck_type _choose_deck(const string title = "Draw")
         deck_menu.set_title(me, true, true);
     }
     deck_menu.set_tag("deck");
-    deck_menu.add_toggle_key('!');
-    deck_menu.add_toggle_key('?');
+    deck_menu.add_toggle_from_command(CMD_MENU_CYCLE_MODE);
+    deck_menu.add_toggle_from_command(CMD_MENU_CYCLE_MODE_REVERSE);
+    // help here amounts to describing decks:
+    deck_menu.add_toggle_from_command(CMD_MENU_HELP);
     deck_menu.menu_action = Menu::ACT_EXECUTE;
 
+    // XX proper keyhelp
     deck_menu.set_more(formatted_string::parse_string(
-                       "Press '<w>!</w>' or '<w>?</w>' to toggle "
+        menu_keyhelp_cmd(CMD_MENU_HELP) + " toggle "
                        "between deck selection and description."));
 
     int numbers[NUM_DECKS];
@@ -554,16 +574,17 @@ static deck_type _choose_deck(const string title = "Draw")
     }
 
     int ret = NUM_DECKS;
-    deck_menu.on_single_selection = [&deck_menu, &ret](const MenuEntry& sel)
+    deck_menu.on_examine = [](const MenuEntry& sel)
+    {
+        int selected = *(static_cast<int*>(sel.data));
+        describe_deck((deck_type) selected);
+        return true;
+    };
+    deck_menu.on_single_selection = [&ret](const MenuEntry& sel)
     {
         ASSERT(sel.hotkeys.size() == 1);
-        int selected = *(static_cast<int*>(sel.data));
-
-        if (deck_menu.menu_action == Menu::ACT_EXAMINE)
-            describe_deck((deck_type) selected);
-        else
-            ret = *(static_cast<int*>(sel.data));
-        return deck_menu.menu_action == Menu::ACT_EXAMINE;
+        ret = *(static_cast<int*>(sel.data));
+        return false;
     };
     deck_menu.show(false);
     if (!crawl_state.doing_prev_cmd_again)
@@ -669,8 +690,12 @@ class StackFiveMenu : public Menu
     virtual bool process_key(int keyin) override;
     CrawlVector& draws;
 public:
+    // TODO: is there a sensible way to implement hover / mouse support for
+    // this?
     StackFiveMenu(CrawlVector& d)
-        : Menu(MF_NOSELECT | MF_UNCANCEL | MF_ALWAYS_SHOW_MORE), draws(d) {};
+        : Menu(MF_NOSELECT | MF_UNCANCEL),
+        draws(d)
+    {};
 };
 
 bool StackFiveMenu::process_key(int keyin)
@@ -695,22 +720,24 @@ bool StackFiveMenu::process_key(int keyin)
                 swap(draws[i], draws[j]);
                 swap(items[i]->text, items[j]->text);
                 items[j]->colour = LIGHTGREY;
-                select_item_index(i, 0, false); // this also updates the item
-                select_item_index(j, 0, false);
+                select_item_index(i, 0); // this also updates the item
+                select_item_index(j, 0);
                 return true;
             }
         items[i]->colour = WHITE;
-        select_item_index(i, 1, false);
+        select_item_index(i, 1);
     }
     else
-        Menu::process_key(keyin);
+        Menu::process_key(keyin); // intentionally do not return here
     return true;
 }
 
 static void _draw_stack(int to_stack)
 {
+    // TODO: refactor into its own subclass?
     ToggleableMenu deck_menu(MF_SINGLESELECT | MF_UNCANCEL
-            | MF_NO_WRAP_ROWS | MF_TOGGLE_ACTION | MF_ALWAYS_SHOW_MORE);
+            | MF_NO_WRAP_ROWS | MF_TOGGLE_ACTION
+            | MF_ARROWS_SELECT | MF_INIT_HOVER);
     {
         ToggleableMenuEntry* me =
             new ToggleableMenuEntry("Draw which deck?        "
@@ -721,8 +748,8 @@ static void _draw_stack(int to_stack)
         deck_menu.set_title(me, true, true);
     }
     deck_menu.set_tag("deck");
-    deck_menu.add_toggle_key('!');
-    deck_menu.add_toggle_key('?');
+    deck_menu.add_toggle_from_command(CMD_MENU_CYCLE_MODE);
+    deck_menu.add_toggle_from_command(CMD_MENU_CYCLE_MODE_REVERSE);
     deck_menu.menu_action = Menu::ACT_EXECUTE;
 
     auto& stack = you.props[NEMELEX_STACK_KEY].get_vector();
@@ -732,14 +759,14 @@ static void _draw_stack(int to_stack)
             string status = "Drawn so far: " + stack_contents();
             deck_menu.set_more(formatted_string::parse_string(
                        status + "\n" +
-                       "Press '<w>!</w>' or '<w>?</w>' to toggle "
+                       menu_keyhelp_cmd(CMD_MENU_HELP) + " toggle "
                        "between deck selection and description."));
     }
     else
     {
         deck_menu.set_more(formatted_string::parse_string(
-                           "Press '<w>!</w>' or '<w>?</w>' to toggle "
-                           "between deck selection and description."));
+            menu_keyhelp_cmd(CMD_MENU_HELP) + " toggle "
+                       "between deck selection and description."));
     }
 
     int numbers[NUM_DECKS];
@@ -759,6 +786,15 @@ static void _draw_stack(int to_stack)
         me->add_tile(tile_def(TILEG_NEMELEX_DECK + i - FIRST_PLAYER_DECK + 1));
         deck_menu.add_entry(me);
     }
+
+    deck_menu.on_examine = [](const MenuEntry& sel)
+    {
+        // what's up with these casts
+        deck_type selected = (deck_type) *(static_cast<int*>(sel.data));
+        describe_deck(selected);
+        return true;
+    };
+
     deck_menu.on_single_selection = [&deck_menu, &stack, to_stack](const MenuEntry& sel)
     {
         ASSERT(sel.hotkeys.size() == 1);
@@ -767,32 +803,27 @@ static void _draw_stack(int to_stack)
         ToggleableMenuEntry* me =
             static_cast<ToggleableMenuEntry*>(deck_menu.selected_entries()[0]);
 
-        if (deck_menu.menu_action == Menu::ACT_EXAMINE)
-            describe_deck(selected);
-        else
+        string status;
+        if (deck_cards(selected))
         {
-            string status;
-            if (deck_cards(selected))
-            {
-                you.props[deck_name(selected)]--;
-                me->text = deck_status(selected);
-                me->alt_text = deck_status(selected);
+            you.props[deck_name(selected)]--;
+            me->text = deck_status(selected);
+            me->alt_text = deck_status(selected);
 
-                card_type draw = _random_card(selected);
-                stack.push_back(draw);
-            }
-            else
-                status = "<lightred>That deck is empty!</lightred> ";
-
-            if (stack.size() > 0)
-                status += "Drawn so far: " + stack_contents();
-            deck_menu.set_more(formatted_string::parse_string(
-                       status + "\n" +
-                       "Press '<w>!</w>' or '<w>?</w>' to toggle "
-                       "between deck selection and description."));
+            card_type draw = _random_card(selected);
+            stack.push_back(draw);
         }
-        return stack.size() < to_stack
-               || deck_menu.menu_action == Menu::ACT_EXAMINE;
+        else
+            status = "<lightred>That deck is empty!</lightred> ";
+
+        if (stack.size() > 0)
+            status += "Drawn so far: " + stack_contents();
+        deck_menu.set_more(formatted_string::parse_string(
+                   status + "\n" +
+                   "Press '<w>!</w>' or '<w>?</w>' to toggle "
+                   "between deck selection and description."));
+
+        return stack.size() < to_stack;
     };
     deck_menu.show(false);
 }
@@ -801,6 +832,7 @@ bool stack_five(int to_stack)
 {
     auto& stack = you.props[NEMELEX_STACK_KEY].get_vector();
 
+    // TODO: this loop makes me sad
     while (stack.size() < to_stack)
     {
         if (crawl_state.seen_hups)
@@ -1048,7 +1080,7 @@ static void _exile_card(int power)
     for (int i = 0; i < 1 + extra_targets; ++i)
     {
         // Pick a random monster nearby to banish.
-        monster* mon_to_banish = choose_random_nearby_monster(1);
+        monster* mon_to_banish = choose_random_nearby_monster();
 
         // Bonus banishments only banish monsters.
         if (i != 0 && !mon_to_banish)
@@ -1233,8 +1265,8 @@ static void _elements_card(int power)
     const monster_type element_list[][3] =
     {
         {MONS_RAIJU, MONS_WIND_DRAKE, MONS_SHOCK_SERPENT},
-        {MONS_BASILISK, MONS_CATOBLEPAS, MONS_IRON_GOLEM},
-        {MONS_FIRE_VORTEX, MONS_MOLTEN_GARGOYLE, MONS_FIRE_DRAGON},
+        {MONS_BASILISK, MONS_CATOBLEPAS, MONS_WAR_GARGOYLE},
+        {MONS_FIRE_BAT, MONS_MOLTEN_GARGOYLE, MONS_FIRE_DRAGON},
         {MONS_ICE_BEAST, MONS_POLAR_BEAR, MONS_ICE_DRAGON}
     };
 
@@ -1322,10 +1354,19 @@ static void _summon_dancing_weapon(int power)
 static void _summon_bee(int power)
 {
     const int power_level = _get_power_level(power);
-    const int how_many = 1 + random2((power_level + 1) * 3);
+    const int how_many = 1 + random2(3 + (power_level));
 
     for (int i = 0; i < how_many; ++i)
         _friendly(MONS_KILLER_BEE, 3);
+
+    if (power_level > 0)
+        _friendly(MONS_QUEEN_BEE, 3);
+
+    if (power_level > 1)
+    {
+        for (int i = 0; i < 3; ++i)
+            _friendly(MONS_MELIAI, 3);
+    }
 }
 
 static void _summon_rangers(int power)
@@ -1355,31 +1396,61 @@ static void _cloud_card(int power)
 {
     const int power_level = _get_power_level(power);
     bool something_happened = false;
+    cloud_type cloudy = CLOUD_DEBUGGING;
 
+    switch (power_level)
+    {
+    case 0:
+        cloudy = CLOUD_MEPHITIC;
+        break;
+    case 1:
+        cloudy = CLOUD_MIASMA;
+        break;
+    default:
+        cloudy = CLOUD_PETRIFY;
+    }
+
+    vector<coord_def> cloud_pos;
     for (radius_iterator di(you.pos(), LOS_NO_TRANS); di; ++di)
     {
         monster *mons = monster_at(*di);
-        cloud_type cloudy;
-        cloudy = CLOUD_BLACK_SMOKE;
 
         if (!mons || mons->wont_attack() || !mons_is_threatening(*mons))
             continue;
 
         for (adjacent_iterator ai(mons->pos(), false); ai; ++ai)
         {
-            if (env.grid(*ai) == DNGN_FLOOR && !cloud_at(*ai))
-            {
-                const int cloud_power = 5 + random2avg(power_level * 6, 2);
-                place_cloud(cloudy, *ai, cloud_power, &you);
+            // don't place clouds directly on the monsters
+            if (monster_at(*ai))
+                continue;
 
-                if (you.see_cell(*ai))
-                    something_happened = true;
-            }
+            if (!feat_is_solid(env.grid(*ai)) && !cloud_at(*ai))
+                cloud_pos.push_back(*ai);
         }
     }
 
+    bool cloud_under_player = false;
+    for (auto pos : cloud_pos)
+    {
+        const int cloud_power = 4 + random2avg(power_level * 2, 2);
+        place_cloud(cloudy, pos, cloud_power, &you);
+
+        if (you.see_cell(pos))
+            something_happened = true;
+
+        if (pos == you.pos())
+            cloud_under_player = true;
+    }
+
     if (something_happened)
-        mpr("Clouds appear around you!");
+    {
+        mpr("Clouds appear around your foes!");
+
+        // Make the player not be immediately affected by clouds that may have
+        // been created beneath them until they act again.
+        if (cloud_under_player)
+            you.duration[DUR_TEMP_CLOUD_IMMUNITY] = 1;
+    }
     else
         canned_msg(MSG_NOTHING_HAPPENS);
 }
@@ -1529,8 +1600,7 @@ static void _wild_magic_card(int power)
                                           spschool::ice,
                                           spschool::earth,
                                           spschool::air,
-                                          spschool::poison,
-                                          spschool::transmutation,
+                                          spschool::alchemy,
                                           spschool::hexes,
                                           spschool::necromancy);
 

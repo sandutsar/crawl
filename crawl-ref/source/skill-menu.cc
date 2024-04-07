@@ -10,6 +10,8 @@
 
 #include "skill-menu.h"
 
+#include "artefact.h"
+#include "art-enum.h"
 #include "cio.h"
 #include "clua.h"
 #include "command.h"
@@ -49,6 +51,15 @@ bool SkillTextTileItem::handle_mouse(const wm_mouse_event& me)
             return false;
 
         skm.select(sk, 'A');
+        return true;
+    }
+    else if (me.event == wm_mouse_event::PRESS
+        && me.button == wm_mouse_event::RIGHT)
+    {
+        skill_type sk = skill_type(get_id());
+        if (is_invalid_skill(sk))
+            return false;
+        describe_skill(sk);
         return true;
     }
     else
@@ -132,12 +143,10 @@ bool SkillMenuEntry::is_selectable(bool)
     if (you.has_mutation(MUT_DISTRIBUTED_TRAINING))
         return false;
 
-    if (!_show_skill(m_sk, skm.get_state(SKM_SHOW)))
-        return false;
-
     if (mastered())
         return false;
 
+    // if it's visible at this point, it's selectable.
     return true;
 }
 
@@ -310,7 +319,9 @@ void SkillMenuEntry::set_aptitude()
     else
         text += make_stringf(" %d", apt);
 
-    text += "</white> ";
+    text += "</white>";
+    if (apt < 10 && apt > -10)
+        text += " ";
 
     if (manual)
     {
@@ -494,6 +505,27 @@ static bool _any_crosstrained()
     return false;
 }
 
+static bool _hermit_bonus()
+{
+    if (player_equip_unrand(UNRAND_HERMITS_PENDANT)
+        && you.skill(SK_INVOCATIONS, 10,  true) < 140)
+    {
+        return true;
+    }
+    return false;
+}
+
+static bool _hermit_penalty()
+{
+    if (player_equip_unrand(UNRAND_HERMITS_PENDANT))
+    {
+        if (you.skill(SK_EVOCATIONS, 10, true) > 0
+            || you.skill(SK_INVOCATIONS, 10, true) > 140)
+        return true;
+    }
+    return false;
+}
+
 string SkillMenuSwitch::get_help()
 {
     switch (m_state)
@@ -532,6 +564,8 @@ string SkillMenuSwitch::get_help()
             }
             if (_any_crosstrained())
                 causes.push_back("cross-training");
+            if (_hermit_bonus())
+                causes.push_back("the Hermit's pendant");
             result = "Skills enhanced by "
                      + comma_separated_line(causes.begin(), causes.end())
                      + " are in <green>green</green>.";
@@ -542,7 +576,8 @@ string SkillMenuSwitch::get_help()
             vector<const char *> causes;
             if (player_under_penance(GOD_ASHENZARI))
                 causes.push_back("Ashenzari's anger");
-
+            if (_hermit_penalty())
+                causes.push_back("the Hermit's pendant");
             if (!result.empty())
                 result += "\n";
             result += "Skills reduced by "
@@ -688,6 +723,14 @@ void SkillMenu::init_experience()
     if (is_set(SKMF_EXPERIENCE) && !m_skill_backup.state_saved())
     {
         m_skill_backup.save();
+        if (you.auto_training)
+            for (int i = 0; i < NUM_SKILLS; ++i)
+            {
+                // only enable currently autotraining skills, not all skills
+                const skill_type sk = skill_type(i);
+                if (!you.training[sk])
+                    you.train[sk] = TRAINING_DISABLED;
+            }
         you.auto_training = false;
         reset_training();
         you.clear_training_targets();
@@ -959,6 +1002,20 @@ bool SkillMenu::do_skill_enabled_check()
         // menu. Training will be fixed up on load.
         ASSERT(!you.has_mutation(MUT_DISTRIBUTED_TRAINING));
         set_help("<lightred>You need to enable at least one skill.</lightred>");
+        // It can be confusing if the only trainable skills are hidden. Turn on
+        // SKM_SHOW_ALL if so.
+        if (get_state(SKM_SHOW) == SKM_SHOW_DEFAULT)
+        {
+            bool showing_trainable = false;
+            for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
+                if (_show_skill(sk, SKM_SHOW_DEFAULT) && can_enable_skill(sk))
+                {
+                    showing_trainable = true;
+                    break;
+                }
+            if (!showing_trainable)
+                toggle(SKM_SHOW);
+        }
         return false;
     }
     return true;
@@ -1226,16 +1283,12 @@ void SkillMenu::init_button_row()
         m_middle_button->add_hotkey('=');
         m_middle_button->set_id(SKM_SET_TARGET);
         m_middle_button->set_highlight_colour(YELLOW);
-        add_item(m_middle_button, 27, m_pos);
+        add_item(m_middle_button, 24, m_pos);
 
         // right button is either blank or shows target clearing options.
         m_clear_targets_button = new FormattedTextItem();
         m_clear_targets_button->set_id(SKM_CLEAR_TARGETS);
         m_clear_targets_button->add_hotkey('-');
-#ifndef USE_TILE_LOCAL
-        m_clear_targets_button->add_hotkey(CK_NUMPAD_SUBTRACT);
-        m_clear_targets_button->add_hotkey(CK_NUMPAD_SUBTRACT2);
-#endif
         m_clear_targets_button->set_highlight_colour(YELLOW);
         add_item(m_clear_targets_button, 25, m_pos);
         refresh_button_row();
@@ -1249,9 +1302,6 @@ void SkillMenu::init_switches()
     {
         sw = new SkillMenuSwitch("mode", '/');
         m_switches[SKM_MODE] = sw;
-#ifndef USE_TILE_LOCAL
-        sw->add_hotkey(CK_NUMPAD_DIVIDE);
-#endif
         sw->add(SKM_MODE_AUTO);
         if (!is_set(SKMF_SPECIAL) && !is_set(SKMF_SIMPLE))
             sw->add(SKM_MODE_MANUAL);
@@ -1278,9 +1328,6 @@ void SkillMenu::init_switches()
         add_item(sw, sw->size(), m_pos);
 
         sw = new SkillMenuSwitch("skills", '*');
-#ifndef USE_TILE_LOCAL
-        sw->add_hotkey(CK_NUMPAD_MULTIPLY);
-#endif
         m_switches[SKM_SHOW] = sw;
         sw->add(SKM_SHOW_DEFAULT);
         if (!is_set(SKMF_SIMPLE))
@@ -1505,15 +1552,20 @@ void SkillMenu::toggle_practise(skill_type sk, int keyn)
     if (keyn >= 'A' && keyn <= 'Z')
         you.train.init(TRAINING_DISABLED);
     if (get_state(SKM_DO) == SKM_DO_PRACTISE)
-        you.train[sk] = (you.train[sk] ? TRAINING_DISABLED : TRAINING_ENABLED);
+        set_training_status(sk, you.train[sk] ? TRAINING_DISABLED : TRAINING_ENABLED);
     else if (get_state(SKM_DO) == SKM_DO_FOCUS)
-    {
-        you.train[sk]
-            = (training_status)((you.train[sk] + 1) % NUM_TRAINING_STATUSES);
-    }
+        set_training_status(sk, (training_status)((you.train[sk] + 1) % NUM_TRAINING_STATUSES));
     else
         die("Invalid state.");
     reset_training();
+    if (is_magic_skill(sk) && you.has_mutation(MUT_INNATE_CASTER))
+    {
+        // This toggles every single magic skill, so let's just regenerate the display.
+        refresh_display();
+        return;
+    }
+
+    // Otherwise, only toggle the affected skill button.
     SkillMenuEntry* skme = find_entry(sk);
     skme->set_name(true);
     const vector<int> hotkeys = skme->get_name_item()->get_hotkeys();
@@ -1522,7 +1574,13 @@ void SkillMenu::toggle_practise(skill_type sk, int keyn)
     {
         int letter;
         letter = hotkeys[0];
-        MenuItem* next_item = m_ff->find_item_by_hotkey(++letter);
+        ASSERT(letter != '9'); // if you get here, make the skill menu smaller
+        if (letter == 'z')
+            letter = '0';
+        else
+            ++letter;
+
+        MenuItem* next_item = m_ff->find_item_by_hotkey(letter);
         if (next_item != nullptr)
         {
             if (m_ff->get_active_item() != nullptr && keyn == CK_ENTER)
@@ -1538,7 +1596,7 @@ void SkillMenu::set_title()
     string t;
     if (is_set(SKMF_EXPERIENCE))
     {
-        t = "You have quaffed a potion of experience. "
+        t = "You have gained great experience. "
             "Select the skills to train.";
     }
 
@@ -1738,7 +1796,7 @@ void skill_menu(int flag, int exp)
     auto popup = make_shared<ui::Popup>(skill_menu_ui);
 
     skill_menu_ui->on_keydown_event([&done, &skill_menu_ui](const KeyEvent& ev) {
-        const auto keyn = ev.key();
+        const auto keyn = numpad_to_regular(ev.key(), true);
 
         skill_menu_ui->_expose();
 
@@ -1750,10 +1808,6 @@ void skill_menu(int flag, int exp)
             case CK_DOWN:
             case CK_LEFT:
             case CK_RIGHT:
-            case 1004:
-            case 1002:
-            case 1008:
-            case 1006:
                 return true;
             case CK_ENTER:
                 if (!skm.is_set(SKMF_EXPERIENCE))
@@ -1772,11 +1826,9 @@ void skill_menu(int flag, int exp)
                     return true;
                 }
             // Fallthrough
-            case ' ':
-                // Space and escape exit in any mode.
-                if (skm.exit(false))
-                    return done = true;
             default:
+                if (ui::key_exits_popup(keyn, true) && skm.exit(false))
+                    return done = true;
                 // Don't exit from !experience on random keys.
                 if (!skm.is_set(SKMF_EXPERIENCE) && skm.exit(false))
                     return done = true;
@@ -1834,7 +1886,7 @@ void skill_menu(int flag, int exp)
         return;
     }
 
-    ui::run_layout(move(popup), done);
+    ui::run_layout(std::move(popup), done);
 
     skm.clear();
 }

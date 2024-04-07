@@ -45,13 +45,13 @@ echo approx_spells_monster: `process_cmd spl-data.h | grep -e "spflag::monster" 
 # in 0.2 and 0.1, items were in enum.h, and this doesn't handle that
 item_file=$(test -e item-prop-enum.h && echo item-prop-enum.h || test -e itemprop-enum.h && echo itemprop-enum.h || echo itemprop.h)
 echo armours: `process_cmd $item_file | grep " ARM_" | grep -v -e ARM_FIRST -e ARM_LAST | wc -l`
-echo weapons: `process_cmd $item_file | grep " WPN_" | grep -v -e WPN_UNKNOWN -e WPN_RANDOM -e WPN_VIABLE -e WPN_THROWN -e WPN_UNARMED | wc -l`
+echo weapons: `process_cmd $item_file | grep " WPN_" | grep -v -e WPN_UNKNOWN -e WPN_RANDOM -e WPN_VIABLE -e WPN_UNARMED | wc -l`
 echo brands: `process_cmd $item_file | grep " SPWPN_" | grep -v -e MAX_GHOST_BRAND -e FORBID_BRAND -e DEBUG_RANDART | wc -l`
 jewel_ring=`process_cmd $item_file | grep " RING_"  | grep -v -e RING_FIRST | wc -l`
 jewel_amu=`process_cmd $item_file | grep " AMU_" | grep -v -e AMU_FIRST | wc -l`
 echo jewellery: $(expr $jewel_ring + $jewel_amu)
 
-# need to be strict about this one because there is some repitition here. n.b. this enum looks a bit inaccurate currently:
+# need to be strict about this one because there is some repetition here. n.b. this enum looks a bit inaccurate currently:
 evoc_misc=`process_cmd $item_file | grep "^    MISC_[A-Z_]*,\$" | grep -v -e DECK_UNKNOWN -e QUAD_DAMAGE | sort | uniq | wc -l`
 # TODO: in 0.10 and before, rods were staves, and this doesn't handle that correctly.
 evoc_rod=`process_cmd $item_file | grep "  ROD_" | wc -l` # the "  " here filters out a bunch of junk in enum.h
@@ -70,7 +70,7 @@ if [ -e art-data.txt ]; then
     #echo randarts: `gcc $cpp_args -E art-enum.h | grep UNRAND_ | grep -v -e UNRAND_DUMMY -e UNRAND_START | wc -l`
 else
     # unrands and fixedarts are collapsed with brands in this version, e.g. SPWPN_SINGING_SWORD
-    # in principle one could extrac this from unrand.h
+    # in principle one could extract this from unrand.h
     echo unrands: NA
 fi
 

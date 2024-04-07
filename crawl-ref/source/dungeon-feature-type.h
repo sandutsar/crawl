@@ -55,6 +55,9 @@ enum dungeon_feature_type
     DNGN_ENDLESS_SALT,                 // Desolation equivalent for permarock
 #endif
     DNGN_ORCISH_IDOL,
+#if TAG_MAJOR_VERSION > 34
+    DNGN_METAL_STATUE,                 // Vault statues that aren't rock
+#endif
     DNGN_GRANITE_STATUE,
     DNGN_MALIGN_GATEWAY,
 
@@ -67,7 +70,9 @@ enum dungeon_feature_type
 
     DNGN_SHALLOW_WATER,
 #if TAG_MAJOR_VERSION > 34
+    DNGN_MUD,                         // Leda's Unmaking
     DNGN_TOXIC_BOG,                   // Eringya's Noxious Bog
+    DNGN_BINDING_SIGIL,               // Sigil of Binding
 #endif
 
     DNGN_FLOOR,
@@ -123,6 +128,12 @@ enum dungeon_feature_type
     DNGN_ENTER_GEHENNA,
     DNGN_ENTER_COCYTUS,
     DNGN_ENTER_TARTARUS,
+#if TAG_MAJOR_VERSION > 34
+    DNGN_EXIT_DIS,
+    DNGN_EXIT_GEHENNA,
+    DNGN_EXIT_COCYTUS,
+    DNGN_EXIT_TARTARUS,
+#endif
     DNGN_ENTER_ABYSS,
     DNGN_EXIT_ABYSS,
     DNGN_STONE_ARCH,
@@ -232,6 +243,11 @@ enum dungeon_feature_type
     DNGN_DRY_FOUNTAIN_BLOOD,
 #endif
     DNGN_DRY_FOUNTAIN,
+#if TAG_MAJOR_VERSION > 34
+    DNGN_CACHE_OF_FRUIT,
+    DNGN_CACHE_OF_MEAT,
+    DNGN_RUNELIGHT,
+#endif
 
     // Not meant to ever appear in env.grid().
     DNGN_EXPLORE_HORIZON, // dummy for redefinition
@@ -335,6 +351,16 @@ enum dungeon_feature_type
     DNGN_ALTAR_IGNIS,
     DNGN_BROKEN_DOOR,
     DNGN_BROKEN_CLEAR_DOOR,
+    DNGN_EXIT_DIS,
+    DNGN_EXIT_GEHENNA,
+    DNGN_EXIT_COCYTUS,
+    DNGN_EXIT_TARTARUS,
+    DNGN_RUNELIGHT,
+    DNGN_MUD,
+    DNGN_BINDING_SIGIL,
+    DNGN_METAL_STATUE,
+    DNGN_CACHE_OF_FRUIT,
+    DNGN_CACHE_OF_MEAT,
 #endif
 
     NUM_FEATURES

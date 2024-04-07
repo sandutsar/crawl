@@ -1,13 +1,18 @@
 %%%%
+Armataur
+
+Scaled mammals the size of horses, Armataurs are fast-rolling and tenacious when
+pursuing enemies, but lack dexterity.
+%%%%
 Barachi
 
 Barachim are slow-moving, amphibious humanoids who can hop long distances.
 Their extended range of vision also allows them to be seen from further away.
 %%%%
-Deep Dwarf
+Coglin
 
-Deep Dwarves live underground and cannot regenerate health naturally, but they
-are very resilient to damage, and have a limited ability to heal at will.
+Coglins ride enchanted exoskeletons able to wield weapons in both hands,
+wrapping slow-revving metal around their puny goblinoid frames.
 %%%%
 Deep Elf
 
@@ -40,8 +45,7 @@ strong and they live in a state of permanent stasis.
 %%%%
 Felid
 
-Felids are many-lived cats possessing sentience. They are incapable of advanced
-item manipulation or the use of armour or weapons.
+Felids are many-lived sentient cats. They cannot use armour or weapons.
 %%%%
 Ghoul
 
@@ -58,19 +62,15 @@ Gnoll
 Gnolls are canine-like humanoids. They are unable to specialise in any single
 skill, but instead gradually become proficient in all skills at once.
 %%%%
-Hill Orc
-
-Hill Orcs are skilled in close combat, and often dabble in offensive magic. Only
-they may worship the Orc god Beogh.
-%%%%
 Human
 
-Humans advance quickly in levels and have equal abilities in most skills.
+Humans are natural explorers. Discovering new places refreshes and invigorates them.
+They are otherwise completely average.
 %%%%
 Tengu
 
 Tengu are bird-people who love to fight, both with weapons and spells. They are
-quite fragile, but they learn to fly swiftly later on.
+fragile but agile, and eventually learn to fly.
 %%%%
 Kobold
 
@@ -87,10 +87,15 @@ Minotaur
 Minotaurs are large muscular humans with bovine heads. They excel at all forms
 of close and ranged combat.
 %%%%
+Mountain Dwarf
+
+Mountain Dwarves are strong melee fighters and capable heavy-armoured casters.
+They can use scrolls to enchant even some artefacts.
+%%%%
 Mummy
 
-Compelled to walk by an ancient curse, Mummies are adept at Necromancy but
-learn other skills very slowly. They are unable to consume potions.
+Compelled to walk by an ancient curse, Mummies have innate faith and are adept
+at Necromancy, but learn other skills very slowly. They cannot drink potions.
 %%%%
 Naga
 
@@ -102,15 +107,10 @@ Octopode
 Octopodes are a species of amphibious cephalopods. They can wear eight rings,
 but almost no armour fits them.
 %%%%
-Ogre
+Oni
 
-Large, strong, and extremely robust, Ogres are competent at all forms of melee.
-Not merely brutes, they are also quite capable spellcasters.
-%%%%
-Palentonga
-
-Scaled mammals the size of horses, Palentongas are able to launch powerful
-rolling charges.
+Large, robust, and extremely fond of drinking, Oni make capable brawlers and
+spellcasters and gain extra benefits from healing potions.
 %%%%
 Spriggan
 

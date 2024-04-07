@@ -19,7 +19,8 @@ static const char32_t dchar_table[NUM_CSET][NUM_DCHAR_TYPES] =
          U'\x2229', //∩
             U'\x2320', //⌠
             U'\x2248', //≈
-            '8',  '{',
+            '~', // sadly, ∼ (U+223C, not ascii ~) and ≃ are not in WGL4
+            U'\x00df',  '{',
 #if defined(TARGET_OS_WINDOWS) && !defined(USE_TILE_LOCAL)
          U'\x2302', //⌂ // CP437 but "optional" in WGL4
 #else
@@ -34,9 +35,10 @@ static const char32_t dchar_table[NUM_CSET][NUM_DCHAR_TYPES] =
 #if TAG_MAJOR_VERSION == 34
          '\\',
 #endif
-         '}', U'\x2020', //†
+         '%', '}', U'\x2020', //%, }, †
             U'\xf7', //÷
-            '$',  '"',
+            '$', U'\x2666', // ♦
+          '"',
          U'\xa7', U'\x263c', U'\x25CB', U'\xB0', // §, ☼, ○, °
             U'\x2663', //♣
 #if TAG_MAJOR_VERSION == 34
@@ -69,7 +71,7 @@ static const char32_t dchar_table[NUM_CSET][NUM_DCHAR_TYPES] =
         // wall .. altar
          '#',  '#',  '*',  '.',  ',', '\'',  '+',  '^',  '>',  '<',  '#',  '_',
         // arch .. item_wand
-        '\\',  '}',  '~',  '8',  '{',  '{',  '{',  '}',  ')',  '[',  '/',
+        '\\',  '-',  '~', '~', '8',  '{',  '{',  '{',  '}',  ')',  '[',  '/',
 #if TAG_MAJOR_VERSION == 34
         '%', // food
 #endif
@@ -78,8 +80,8 @@ static const char32_t dchar_table[NUM_CSET][NUM_DCHAR_TYPES] =
 #if TAG_MAJOR_VERSION == 34
          '|', // rod
 #endif
-        // miscellany .. amulet
-         '}',  '%',  '%',  '$',  '"',
+        // talisman .. amulet
+         '|', '}',  '%',  '%',  '$',  '$',  '"',
         // cloud .. tree
          '0', '0', '0', '0', '7',
 #if TAG_MAJOR_VERSION == 34
@@ -103,8 +105,9 @@ dungeon_char_type dchar_by_name(const string &name)
     {
         "wall", "permawall", "wall_magic", "floor", "floor_magic", "door_open",
         "door_closed", "trap", "stairs_down", "stairs_up", "grate", "altar",
-        "arch", "fountain", "wavy", "statue", "invis_exposed", "item_detected",
-        "item_orb", "item_rune", "item_weapon", "item_armour", "item_wand",
+        "arch", "fountain", "wavy", "shallow_wavy", "statue", "invis_exposed",
+        "item_detected", "item_orb", "item_rune", "item_weapon", "item_armour",
+        "item_wand",
 #if TAG_MAJOR_VERSION == 34
         "item_food",
 #endif
@@ -113,9 +116,9 @@ dungeon_char_type dchar_by_name(const string &name)
 #if TAG_MAJOR_VERSION == 34
         "item_rod",
 #endif
-        "item_miscellany", "item_corpse", "item_skeleton", "item_gold",
-        "item_amulet", "cloud", "cloud_weak", "cloud_fading", "cloud_terminal",
-        "tree",
+        "item_talisman", "item_miscellany", "item_corpse", "item_skeleton",
+        "item_gold", "item_gem", "item_amulet", "cloud", "cloud_weak",
+        "cloud_fading", "cloud_terminal", "tree",
 #if TAG_MAJOR_VERSION == 34
         "teleporter",
 #endif

@@ -11,6 +11,10 @@ Aizul title
 
 Aizul the Neglectful Guardian
 %%%%
+Amaemon title
+
+Amaemon the Diabolical Poisoner
+%%%%
 Antaeus title
 
 Antaeus, Guardian of Cocytus
@@ -119,6 +123,10 @@ Grum title
 
 Grum the Hunter
 %%%%
+Grunn title
+
+Grunn the Punished
+%%%%
 Harold title
 
 Harold the Weathered
@@ -133,11 +141,15 @@ Ilsuiw, Witch of the Tides
 %%%%
 Ijyb title
 
-Ijyb the Twisted Goblin
+Ijyb the Inquisitive
 %%%%
 Jessica title
 
 Jessica the Apprentice Sorceress
+%%%%
+Jeremiah title
+
+Jeremiah, Barachi Dreamer
 %%%%
 Jorgrun title
 
@@ -151,6 +163,10 @@ Joseph title
 
 Joseph, a Mercenary
 %%%%
+Josephina title
+
+Josephina the Ice-Lich
+%%%%
 Josephine title
 
 Josephine the Decaying Necromancer
@@ -162,6 +178,10 @@ Khufu the Undying Pharaoh
 Kirke title
 
 Kirke, Weaver of Myths
+%%%%
+Lodul title
+
+Lodul the Thunderous
 %%%%
 Lom Lobon title
 
@@ -217,7 +237,7 @@ Nellie, Star of the Show
 %%%%
 Nergalle title
 
-Nergalle the Soulbinder
+Nergalle, Lorekeeper of the Fallen
 %%%%
 Nessos title
 
@@ -226,6 +246,18 @@ Nessos the Markscentaur
 Nikola title
 
 Nikola the Mad Inventor
+%%%%
+Norris title
+
+Norris the Philosopher
+%%%%
+Parghit title
+
+Parghit the Mighty
+%%%%
+Pargi title
+
+Pargi the Meek
 %%%%
 Pikel title
 
@@ -238,10 +270,6 @@ Polyphemus the Watchful Shepherd
 Psyche title
 
 Psyche the Insane Magess
-%%%%
-Pargi title
-
-Pargi the Meek
 %%%%
 Robin title
 
@@ -291,7 +319,15 @@ Vashnia title
 
 Vashnia the Elite Marksnaga
 %%%%
+Vv title
+
+Vv the Exile
+%%%%
 Xtahua title
 
 Xtahua the Ancient
+%%%%
+Zenata title
+
+Zenata, Seeker of Sheza
 %%%%

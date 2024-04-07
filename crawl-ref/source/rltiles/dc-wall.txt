@@ -426,6 +426,16 @@ vault_stone13
 vault_stone14
 vault_stone15
 
+%weight 10
+wall_stone_depths0 STONE_WALL_DEPTHS
+%weight 7
+wall_stone_depths1
+%weight 5
+wall_stone_depths2
+%weight 3
+wall_stone_depths3
+wall_stone_depths4
+
 # ssssssss
 %weight 10
 wall_stone_spider0 STONE_WALL_SPIDER
@@ -453,6 +463,7 @@ wall_stone_shoals3
 %weight 10
 wall_stone_shoals4
 
+%weight 10
 wall_oozing0 WALL_OOZING
 wall_oozing1
 %weight 4
@@ -570,6 +581,13 @@ wall_vines3
 wall_vines4
 wall_vines5
 wall_vines6
+
+studio0 WALL_STUDIO
+studio1
+studio2
+studio3
+studio4
+studio5
 
 # These 15 variants are referenced from tileview.cc
 pebble_red0 WALL_PEBBLE WALL_PEBBLE_RED
@@ -699,6 +717,16 @@ marble_wall9
 marble_wall10
 marble_wall11
 marble_wall12
+
+%weight 10
+tukima_marble_wall0 WALL_MARBLE_TUKIMA
+tukima_marble_wall1
+tukima_marble_wall2
+tukima_marble_wall3
+%weight 1
+tukima_marble_wall4
+tukima_marble_wall5
+tukima_marble_wall6
 
 %weight 5
 sandstone_wall0 WALL_SANDSTONE
@@ -1079,6 +1107,11 @@ hell10
 hell11
 
 %weight 10
+bmaus_stone_wall0 WALL_BORG_STONE
+bmaus_stone_wall1
+bmaus_stone_wall2
+bmaus_stone_wall3
+
 ice_wall0 WALL_ICE
 ice_wall1
 ice_wall2
@@ -1538,6 +1571,10 @@ crystal_wall_yellow DNGN_CRYSTAL_YELLOW
 crystal_wall_white DNGN_CRYSTAL_WHITE
 
 %sdir dngn/wall
+crystal_wall_zot_0 CRYSTAL_WALL_ZOT
+crystal_wall_zot_1
+crystal_wall_zot_2
+
 emerald1 WALL_EMERALD
 emerald2
 emerald3
@@ -1819,3 +1856,35 @@ icy_wall_overlay3
 
 %sdir dngn/vaults
 brick_dark_leak WALL_BRICK_DARK_LEAK
+
+%weight 10
+bedeviled_crystal_abyss_0 BEDEVILED_CRYSTAL_ABYSS
+%weight 2
+bedeviled_crystal_abyss_1
+
+%weight 10
+bedeviled_crystal_geh_0 BEDEVILED_CRYSTAL_GEHENNA
+%weight 2
+bedeviled_crystal_geh_1
+
+%weight 10
+bedeviled_crystal_coc_0 BEDEVILED_CRYSTAL_COCYTUS
+%weight 2
+bedeviled_crystal_coc_1
+
+%weight 10
+bedeviled_crystal_dis_0 BEDEVILED_CRYSTAL_DIS
+%weight 2
+bedeviled_crystal_dis_1
+
+%weight 10
+bedeviled_crystal_tar_0 BEDEVILED_CRYSTAL_TARTARUS
+%weight 2
+bedeviled_crystal_tar_1
+
+%weight 10
+bedeviled_crystal_pan_0 BEDEVILED_CRYSTAL_PANDEMONIUM
+bedeviled_crystal_pan_1
+%weight 2
+bedeviled_crystal_pan_2
+bedeviled_crystal_pan_3

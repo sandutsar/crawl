@@ -429,16 +429,7 @@ static int dgn_item(lua_State *ls)
         return 0;
     }
 
-    if (lua_isstring(ls, 2))
-    {
-        string err = map->items.add_item(luaL_checkstring(ls, 2));
-        if (!err.empty())
-            luaL_error(ls, err.c_str());
-        return 0;
-    }
-
-    const int index = luaL_safe_checkint(ls, 2);
-    string err = map->items.set_item(index, luaL_checkstring(ls, 3));
+    string err = map->items.add_item(luaL_checkstring(ls, 2));
     if (!err.empty())
         luaL_error(ls, err.c_str());
     return 0;
@@ -1109,7 +1100,7 @@ static int dgn_random_walk(lua_State *ls)
     if (!in_bounds(x, y))
     {
         char buf[80];
-        sprintf(buf, "Point (%d,%d) isn't in bounds.", x, y);
+        snprintf(buf, sizeof(buf), "Point (%d,%d) isn't in bounds.", x, y);
         luaL_argerror(ls, 1, buf);
         return 0;
     }
@@ -1160,7 +1151,7 @@ static int dgn_apply_area_cloud(lua_State *ls)
     if (!in_bounds(x, y))
     {
         char buf[80];
-        sprintf(buf, "Point (%d,%d) isn't in bounds.", x, y);
+        snprintf(buf, sizeof(buf), "Point (%d,%d) isn't in bounds.", x, y);
         luaL_argerror(ls, 1, buf);
         return 0;
     }
@@ -1260,7 +1251,7 @@ static int dgn_place_cloud(lua_State *ls)
     if (!in_bounds(x, y))
     {
         char buf[80];
-        sprintf(buf, "Point (%d,%d) isn't in bounds.", x, y);
+        snprintf(buf, sizeof(buf), "Point (%d,%d) isn't in bounds.", x, y);
         luaL_argerror(ls, 1, buf);
         return 0;
     }
@@ -1783,6 +1774,12 @@ LUAFN(dgn_fill_grd_area)
 
 LUAWRAP(dgn_apply_tide, shoals_apply_tides(0, true))
 
+LUAFN(dgn_state_is_descent)
+{
+    lua_pushboolean(ls, crawl_state.game_is_descent());
+    return 1;
+}
+
 const struct luaL_reg dgn_dlib[] =
 {
 { "reset_level", _dgn_reset_level },
@@ -1898,6 +1895,8 @@ const struct luaL_reg dgn_dlib[] =
 { "fill_grd_area", dgn_fill_grd_area },
 
 { "apply_tide", dgn_apply_tide },
+
+{ "is_descent", dgn_state_is_descent },
 
 { nullptr, nullptr }
 };

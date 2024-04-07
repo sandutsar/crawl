@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "beam.h"
+#include "coordit.h"
 #include "los-type.h"
 #include "reach-type.h"
 
@@ -20,6 +21,22 @@ enum aff_type // sign and non-zeroness matters
     // just keep AFF_YES the minimal "bright" value.
     AFF_LANDING,     // Valid shadow step landing site
     AFF_MULTIPLE,    // Passes through multiple times
+};
+
+class targeter;
+
+// radius_iterator might be better, but the code is too incomprehensible
+// to subclass
+class targeting_iterator : public rectangle_iterator
+{
+public:
+    targeting_iterator(targeter &t, aff_type _threshold);
+    void operator ++() override;
+    aff_type is_affected();
+
+private:
+    targeter &tgt;
+    aff_type threshold;
 };
 
 class targeter
@@ -42,6 +59,8 @@ public:
     virtual aff_type is_affected(coord_def loc) = 0;
     virtual bool can_affect_unseen();
     virtual bool affects_monster(const monster_info& mon);
+
+    targeting_iterator affected_iterator(aff_type threshold = AFF_YES);
 protected:
     bool anyone_there(coord_def loc);
 };
@@ -66,14 +85,6 @@ protected:
 private:
     bool penetrates_targets;
     explosion_map exp_map_min, exp_map_max;
-};
-
-class targeter_unravelling : public targeter_beam
-{
-public:
-    targeter_unravelling(const actor *act, int range, int pow);
-    bool set_aim(coord_def a) override;
-    bool valid_aim(coord_def a) override;
 };
 
 class targeter_view : public targeter
@@ -105,6 +116,17 @@ private:
     bool (*affects_pos)(const coord_def &);
 };
 
+class targeter_permafrost : public targeter_smite
+{
+public:
+    targeter_permafrost(const actor &act, int power);
+    aff_type is_affected(coord_def loc) override;
+private:
+    set<coord_def> targets;
+    set<coord_def> possible_centres;
+    bool single_target;
+};
+
 class targeter_walljump : public targeter_smite
 {
 public:
@@ -118,6 +140,28 @@ class targeter_transference : public targeter_smite
 public:
     targeter_transference(const actor *act, int aoe);
     bool valid_aim(coord_def a) override;
+};
+
+class targeter_inner_flame : public targeter_smite
+{
+public:
+    targeter_inner_flame(const actor *act, int range);
+    bool valid_aim(coord_def a) override;
+};
+
+class targeter_simulacrum : public targeter_smite
+{
+public:
+    targeter_simulacrum(const actor *act, int range);
+    bool valid_aim(coord_def a) override;
+};
+
+class targeter_unravelling : public targeter_smite
+{
+public:
+    targeter_unravelling();
+    bool valid_aim(coord_def a) override;
+    bool set_aim(coord_def a) override;
 };
 
 class targeter_fragment : public targeter_smite
@@ -160,28 +204,29 @@ public:
 class targeter_cleave : public targeter
 {
 public:
-    targeter_cleave(const actor* act, coord_def target);
+    targeter_cleave(const actor* act, coord_def target, int range);
     aff_type is_affected(coord_def loc) override;
     bool valid_aim(coord_def) override;
     bool set_aim(coord_def a) override;
 private:
     set<coord_def> targets;
+    int range;
 };
 
 class targeter_cloud : public targeter
 {
 public:
-    targeter_cloud(const actor* act, int range = LOS_RADIUS,
-                    int count_min = 8, int count_max = 10);
+    targeter_cloud(const actor* act, cloud_type ctype, int range = LOS_RADIUS,
+                   int count_min = 8, int count_max = 10);
     bool set_aim(coord_def a) override;
     bool valid_aim(coord_def a) override;
     bool can_affect_outside_range() override;
     aff_type is_affected(coord_def loc) override;
+    cloud_type ctype;
     int range;
     int cnt_min, cnt_max;
     map<coord_def, aff_type> seen;
     vector<vector<coord_def> > queue;
-    bool avoid_clouds;
 };
 
 class targeter_splash : public targeter_beam
@@ -222,6 +267,16 @@ public:
     }
 };
 
+class targeter_refrig : public targeter_radius
+{
+public:
+    targeter_refrig(actor *act)
+        : targeter_radius(act, LOS_NO_TRANS, LOS_RADIUS, 0, 1)
+    { }
+
+    aff_type is_affected(coord_def loc) override;
+};
+
 class targeter_flame_wave : public targeter_radius
 {
 public:
@@ -229,11 +284,10 @@ public:
     aff_type is_affected(coord_def loc) override;
 };
 
-
-class targeter_corpse_rot : public targeter_radius
+class targeter_siphon_essence : public targeter_radius
 {
 public:
-    targeter_corpse_rot();
+    targeter_siphon_essence();
     aff_type is_affected(coord_def loc) override;
 };
 
@@ -299,22 +353,6 @@ private:
 
 #define CLOUD_CONE_BEAM_COUNT 11
 
-class targeter_shotgun : public targeter
-{
-public:
-    targeter_shotgun(const actor* act, size_t beam_count, int r,
-                     bool cloud = false);
-    bool valid_aim(coord_def a) override;
-    bool set_aim(coord_def a) override;
-    aff_type is_affected(coord_def loc) override;
-    vector<ray_def> rays;
-    map<coord_def, size_t> zapped;
-private:
-    size_t num_beams;
-    int range;
-    bool uses_clouds;
-};
-
 class targeter_monster_sequence : public targeter_beam
 {
 public:
@@ -379,9 +417,6 @@ private:
     vector<coord_def> path_taken; // Path the charge took.
 };
 
-string bad_charge_target(coord_def a);
-bool can_charge_through_mons(coord_def a);
-
 // a fixed los targeter matching how it is called for shatter, with a custom
 // tweak to affect walls.
 class targeter_shatter : public targeter_radius
@@ -412,6 +447,16 @@ public:
 protected:
     set<coord_def> affected_positions;
     aff_type positive;
+};
+
+class targeter_scorch : public targeter_multiposition
+{
+public:
+    targeter_scorch(const actor &a, int _range, bool affect_invis);
+    bool valid_aim(coord_def c) override;
+
+protected:
+    int range;
 };
 
 class targeter_chain_lightning : public targeter
@@ -526,4 +571,70 @@ class targeter_intoxicate : public targeter_multimonster
 public:
     targeter_intoxicate();
     bool affects_monster(const monster_info& mon) override;
+};
+
+class targeter_anguish : public targeter_multimonster
+{
+public:
+    targeter_anguish();
+    bool affects_monster(const monster_info& mon) override;
+};
+class targeter_boulder : public targeter_beam
+{
+public:
+    targeter_boulder(const actor* caster);
+    bool valid_aim(coord_def a) override;
+    bool set_aim(coord_def a) override;
+    aff_type is_affected(coord_def loc) override;
+};
+
+class targeter_petrify : public targeter_beam
+{
+public:
+    targeter_petrify(const actor *act, int r);
+    bool set_aim(coord_def a) override;
+    aff_type is_affected(coord_def loc) override;
+
+private:
+    set<coord_def> chain_targ;
+};
+
+class targeter_bind_soul : public targeter_smite
+{
+public:
+    targeter_bind_soul();
+    bool valid_aim(coord_def a) override;
+};
+
+class targeter_explosive_beam : public targeter_beam
+{
+public:
+    targeter_explosive_beam(const actor *act, int pow, int range,
+                            bool always_explode = false);
+    bool set_aim(coord_def a) override;
+    aff_type is_affected(coord_def loc) override;
+private:
+    explosion_map exp_map;
+    bool always_explode;
+};
+
+class targeter_galvanic : public targeter_beam
+{
+public:
+    targeter_galvanic(const actor *act, int pow, int range);
+    bool set_aim(coord_def a) override;
+    aff_type is_affected(coord_def loc) override;
+private:
+    vector<coord_def> jolt_targets;
+};
+
+class targeter_gavotte : public targeter_beam
+{
+public:
+    targeter_gavotte(const actor* caster);
+    bool valid_aim(coord_def a) override;
+    bool set_aim(coord_def a) override;
+    aff_type is_affected(coord_def loc) override;
+private:
+    vector<coord_def> affected_monsters;
 };

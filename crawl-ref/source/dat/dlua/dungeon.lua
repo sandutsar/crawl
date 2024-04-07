@@ -661,12 +661,12 @@ dgn.good_scrolls = [[
     w:22  scroll of blinking no_pickup q:2 /
     w:54  scroll of enchant armour no_pickup /
     w:22  scroll of enchant armour no_pickup q:2 /
-    w:45  scroll of magic mapping no_pickup /
-    w:20  scroll of magic mapping no_pickup q:2 /
+    w:45  scroll of revelation no_pickup /
+    w:20  scroll of revelation no_pickup q:2 /
     w:40  scroll of amnesia no_pickup /
     w:15  scroll of amnesia no_pickup q:2 /
-    w:33  scroll of holy word no_pickup q:1 /
-    w:11  scroll of holy word no_pickup q:2 /
+    w:33  scroll of immolation no_pickup q:1 /
+    w:11  scroll of immolation no_pickup q:2 /
     w:30  scroll of silence no_pickup q:1 /
     w:10  scroll of silence no_pickup q:2 /
     w:11  scroll of acquirement no_pickup q:1 /
@@ -688,8 +688,8 @@ dgn.loot_scrolls = [[
     w:15  scroll of fog /
     w:15  scroll of fear /
     w:10  scroll of blinking /
-    w:10  scroll of summoning /
-    w:8   scroll of magic mapping /
+    w:10  any ally scroll /
+    w:8   scroll of revelation /
     w:10  scroll of enchant weapon /
     w:10  scroll of enchant armour /
     w:5   scroll of brand weapon /
@@ -697,15 +697,15 @@ dgn.loot_scrolls = [[
     ]]
 
 dgn.loot_potions = [[
-    w:15  potion of haste /
-    w:15  potion of heal wounds /
-    w:10  potion of might /
-    w:10  potion of invisibility /
-    w:10  potion of magic /
-    w:10  potion of mutation /
+    w:16  potion of haste /
+    w:16  potion of heal wounds /
+    w:11  potion of might /
+    w:11  potion of invisibility /
+    w:11  potion of magic /
+    w:11  potion of mutation /
     w:8   potion of cancellation /
-    w:5   potion of brilliance /
-    w:5   potion of resistance /
+    w:7   potion of brilliance /
+    w:7   potion of resistance /
     w:2   potion of experience
     ]]
 

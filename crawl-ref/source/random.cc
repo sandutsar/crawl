@@ -243,7 +243,7 @@ int maybe_random2(int x, bool random_factor)
 }
 
 // [0, ceil(nom/denom)]
-int maybe_random_div(int nom, int denom, bool random_factor)
+int maybe_random2_div(int nom, int denom, bool random_factor)
 {
     if (nom <= 0)
         return 0;
@@ -335,6 +335,24 @@ int random2avg(int max, int rolls)
         sum += random2(max + 1);
 
     return sum / rolls;
+}
+
+int random2min(int max, int rolls)
+{
+    int res = random2(max);
+    for (int i = 0; i < (rolls -1); i++)
+        res = min(res, random2(max));
+
+    return res;
+}
+
+int random2max(int ran, int rolls)
+{
+    int res = random2(ran);
+    for (int i = 0; i < (rolls -1); i++)
+        res = max(res, random2(ran));
+
+    return res;
 }
 
 // biased_random2() takes values in the same range [0, max) as random2() but

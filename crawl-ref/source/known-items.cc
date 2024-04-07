@@ -6,6 +6,7 @@
 #include "AppHdr.h"
 
 #include "decks.h"
+#include "describe.h"
 #include "english.h"
 #include "invent.h"
 #include "item-prop.h"
@@ -13,6 +14,7 @@
 #include "item-status-flag-type.h"
 #include "known-items.h"
 #include "libutil.h"
+#include "options.h"
 #include "stringutil.h"
 #include "tag-version.h"
 #include "unicode.h"
@@ -20,6 +22,19 @@
 class KnownMenu : public InvMenu
 {
 public:
+    KnownMenu(bool show_unknown, bool _all_items_known)
+        : InvMenu(MF_QUIET_SELECT | MF_ALLOW_FORMATTING
+                    | ((show_unknown) ? MF_NOSELECT
+                                      : MF_MULTISELECT | MF_ALLOW_FILTER)),
+        all_items_known(_all_items_known)
+    {
+        set_type(menu_type::know);
+        if (!Options.single_column_item_menus)
+            set_flags(get_flags() | MF_USE_TWO_COLUMNS);
+        set_more(); // force derived class get_keyhelp()
+    }
+
+
     // This loads items in the order they are put into the list (sequentially)
     menu_letter load_items_seq(const vector<const item_def*> &mitems,
                                MenuEntry *(*procfn)(MenuEntry *me) = nullptr,
@@ -47,6 +62,12 @@ protected:
         return "known-menu";
     }
 
+    bool examine_index(int) override
+    {
+        // disable behavior from InvMenu
+        return true;
+    }
+
     bool process_key(int key) override
     {
         bool resetting = (lastch == CONTROL('D'));
@@ -62,6 +83,14 @@ protected:
         else
             num = -1;
 
+        if (ui::key_exits_popup(key))
+        {
+            if (resetting)
+                return true;
+            lastch = key;
+            return false;
+        }
+
         switch (key)
         {
         case ',':
@@ -73,10 +102,10 @@ protected:
             key = ',';
             break;
 
-        case '-':
+        case '-': // TODO: assimilate to CMD_MENU_CYCLE_MODE?
         case '\\':
-        case CK_ENTER:
-        CASE_ESCAPE
+            if (all_items_known)
+                return true; // skip process_key for '-', it's confusing
             lastch = key;
             return false;
 
@@ -89,13 +118,67 @@ protected:
             {
                 lastch = CONTROL('D');
                 temp_title = title->text;
-                set_title("Select to reset item to default: ");
+                set_title("Select to reset item to default ([*] for all): ");
             }
 
             return true;
         }
         return Menu::process_key(key);
     }
+
+    string get_keyhelp(bool scrollable) const override
+    {
+        string navigation;
+        if (is_set(MF_NOSELECT))
+        {
+            navigation = "<lightgrey>";
+            if (scrollable)
+            {
+                navigation +=
+                    menu_keyhelp_cmd(CMD_MENU_PAGE_DOWN) + " page down  "
+                    + menu_keyhelp_cmd(CMD_MENU_PAGE_UP) + " page up  ";
+            }
+            navigation += "[<w>-</w>] recognised  "
+                            + menu_keyhelp_cmd(CMD_MENU_EXIT) + " exit"
+                            "</lightgrey>";
+        }
+        else
+        {
+            // very similar to the MF_MULTISELECT case for regular Menus, but
+            // various differences require an override
+            navigation = "<lightgrey>" + menu_keyhelp_select_keys()
+                         + " select  ";
+
+            if (scrollable)
+            {
+                navigation +=
+                    menu_keyhelp_cmd(CMD_MENU_PAGE_DOWN) + " page down  "
+                    + menu_keyhelp_cmd(CMD_MENU_PAGE_UP) + " page up  ";
+            }
+            navigation += "</lightgrey>";
+            navigation = pad_more_with_esc(navigation);
+            navigation +=
+                    "\n<lightgrey>"
+                    "Letters toggle autopickup  ";
+            if (is_set(MF_ARROWS_SELECT))
+            {
+                navigation += menu_keyhelp_cmd(CMD_MENU_TOGGLE_SELECTED)
+                    + " toggle selected  ";
+            }
+
+            if (!all_items_known)
+            {
+                navigation +=
+                    "[<w>-</w>] unrecognised"
+                    "</lightgrey>";
+            }
+        }
+
+        return pad_more_with(navigation,
+                            "<lightgrey>[<w>XXX</w>]</lightgrey>", MIN_COLS);
+    }
+
+    bool all_items_known;
 };
 
 class KnownEntry : public InvEntry
@@ -107,10 +190,8 @@ public:
         selected_qty = inv->selected_qty;
     }
 
-    virtual string get_text(bool need_cursor) const override
+    virtual string get_text() const override
     {
-        need_cursor = need_cursor && show_cursor;
-
         string name;
 
         if (item->base_type == OBJ_MISCELLANY)
@@ -130,6 +211,8 @@ public:
         }
         else if (item->base_type == OBJ_RUNES)
             name = "runes";
+        else if (item->base_type == OBJ_GEMS)
+            name = "gems";
         else if (item->sub_type == get_max_subtype(item->base_type))
         {
             name = "unknown "
@@ -139,6 +222,12 @@ public:
                  || item->base_type == OBJ_WANDS)
         {
             name = pluralise(item->name(DESC_DBNAME));
+        }
+        else if (item->base_type == OBJ_SCROLLS
+                 || item->base_type == OBJ_POTIONS)
+        {
+            name = pluralise(item->name(DESC_DBNAME))
+                   + " (" + describe_item_rarity(*item) + ")";
         }
         else
         {
@@ -155,16 +244,14 @@ public:
         else
             symbol = '-';
 
-        return make_stringf(" %c%c%c%c%s", hotkeys[0], need_cursor ? '[' : ' ',
-                                           symbol, need_cursor ? ']' : ' ',
-                                           name.c_str());
+        return make_stringf(" %c %c %s", hotkeys[0], symbol, name.c_str());
     }
 
-    virtual int highlight_colour() const override
+    virtual int highlight_colour(bool) const override
     {
         if (selected_qty >= 1)
             return WHITE;
-        else if (is_useless_item(*item))
+        else if (is_useless_item(*item, false))
             return DARKGREY;
         else
             return MENU_ITEM_STOCK_COLOUR;
@@ -205,13 +292,19 @@ public:
     {
     }
 
-    virtual string get_text(const bool = false) const override
+    virtual string get_text() const override
     {
+        if (item->base_type == OBJ_SCROLLS || item->base_type == OBJ_POTIONS)
+        {
+            return " " + item->name(DESC_PLAIN, false, true, false)
+                   + " (" + describe_item_rarity(*item) + ")";
+        }
+
         description_level_type desctype =
             item->base_type == OBJ_WANDS ? DESC_DBNAME : DESC_PLAIN;
 
-        return string(" ") + item->name(desctype, false, true, false, false,
-                                        ISFLAG_KNOW_PLUSES);
+        return " " + item->name(desctype, false, true, false, false,
+                                ISFLAG_KNOW_PLUSES);
     }
 };
 
@@ -272,12 +365,15 @@ static void _add_fake_item(object_class_type base, int sub,
 
 void check_item_knowledge(bool unknown_items)
 {
+    // TODO: refactor most of this into the menu class...
+
     vector<const item_def*> items;
     vector<const item_def*> items_missile; //List of missiles should go after normal items
 #if TAG_MAJOR_VERSION == 34
     vector<const item_def*> items_food;    //List of foods should come next
 #endif
     vector<const item_def*> items_misc;
+    vector<const item_def*> items_talismans;
     vector<const item_def*> items_other;   //List of other items should go after everything
     vector<SelItem> selected_items;
 
@@ -292,7 +388,14 @@ void check_item_knowledge(bool unknown_items)
             if (i == OBJ_JEWELLERY && j >= NUM_RINGS && j < AMU_FIRST_AMULET)
                 continue;
 
-            if (you.type_ids[i][j] != unknown_items) // logical xor
+            const bool known = you.type_ids[i][j];
+
+            // Don't show items the player knows can't generate.
+            // (unless they *have* generated, ha...)
+            if (!known && item_known_excluded_from_set((object_class_type)i, j))
+                continue;
+
+            if (known != unknown_items) // logical xor
                 _add_fake_item(i, j, selected_items, items, !unknown_items);
             else
                 all_items_known = false;
@@ -315,8 +418,15 @@ void check_item_knowledge(bool unknown_items)
         for (int i = 0; i < NUM_MISSILES; i++)
         {
 #if TAG_MAJOR_VERSION == 34
-            if (i == MI_NEEDLE)
+            switch (i)
+            {
+            case MI_NEEDLE:
+            case MI_ARROW:
+            case MI_BOLT:
+            case MI_SLING_BULLET:
+            case MI_SLUG:
                 continue;
+            }
 #endif
             _add_fake_item(OBJ_MISSILES, i, selected_items, items_missile);
         }
@@ -333,9 +443,9 @@ void check_item_knowledge(bool unknown_items)
                 || i == MISC_RUNE_OF_ZOT
                 || i == MISC_STONE_OF_TREMORS
                 || i == MISC_FAN_OF_GALES
-                || i == MISC_SACK_OF_SPIDERS
                 || i == MISC_LAMP_OF_FIRE
                 || i == MISC_CRYSTAL_BALL_OF_ENERGY
+                || i == MISC_XOMS_CHESSBOARD
 #endif
                 || (i == MISC_QUAD_DAMAGE && !crawl_state.game_is_sprint()))
             {
@@ -344,6 +454,14 @@ void check_item_knowledge(bool unknown_items)
             _add_fake_item(OBJ_MISCELLANY, i, selected_items, items_misc);
         }
 
+        for (int i = 0; i < NUM_TALISMANS; i++)
+            _add_fake_item(OBJ_TALISMANS, i, selected_items, items_talismans);
+
+        // N.b. NUM_BOOKS drastically exceeds MAX_SUBTYPES, but it doesn't
+        // matter for force_autopickup purposes because we only use 0 and
+        // BOOK_MANUAL
+        COMPILE_CHECK(BOOK_MANUAL < MAX_SUBTYPES);
+
         // Misc.
         static const pair<object_class_type, int> misc_list[] =
         {
@@ -351,6 +469,7 @@ void check_item_knowledge(bool unknown_items)
             { OBJ_GOLD, 1 },
             { OBJ_BOOKS, 0 },
             { OBJ_RUNES, NUM_RUNE_TYPES },
+            { OBJ_GEMS, NUM_GEM_TYPES },
         };
         for (auto e : misc_list)
             _add_fake_item(e.first, e.second, selected_items, items_other);
@@ -362,14 +481,16 @@ void check_item_knowledge(bool unknown_items)
     sort(items_food.begin(), items_food.end(), _identified_item_names);
 #endif
     sort(items_misc.begin(), items_misc.end(), _identified_item_names);
+    // Intentionally don't sort talismans so that they're ordered by tier instead.
+    // (This is dubious!)
 
-    KnownMenu menu;
+    KnownMenu menu(unknown_items, all_items_known);
     string stitle;
 
     if (unknown_items)
-        stitle = "Items not yet recognised: (toggle with -)";
+        stitle = "Items not yet recognised:";
     else if (!all_items_known)
-        stitle = "Recognised items. (- for unrecognised, select to toggle autopickup)";
+        stitle = "Recognised items. (Select to toggle autopickup)";
     else
         stitle = "You recognise all items. (Select to toggle autopickup)";
 
@@ -379,10 +500,6 @@ void check_item_knowledge(bool unknown_items)
                              ' ') + prompt;
 
     menu.set_preselect(&selected_items);
-    menu.set_flags( MF_QUIET_SELECT | MF_ALLOW_FORMATTING | MF_USE_TWO_COLUMNS
-                    | ((unknown_items) ? MF_NOSELECT
-                                       : MF_MULTISELECT | MF_ALLOW_FILTER));
-    menu.set_type(menu_type::know);
     menu_letter ml;
     ml = menu.load_items(items, unknown_items ? unknown_item_mangle
                                               : known_item_mangle, 'a', false);
@@ -392,6 +509,7 @@ void check_item_knowledge(bool unknown_items)
     ml = menu.load_items(items_food, known_item_mangle, ml, false);
 #endif
     ml = menu.load_items(items_misc, known_item_mangle, ml, false);
+    ml = menu.load_items(items_talismans, known_item_mangle, ml, false);
     if (!items_other.empty())
     {
         menu.add_entry(new MenuEntry("Other Items", MEL_SUBTITLE));
@@ -409,6 +527,7 @@ void check_item_knowledge(bool unknown_items)
     deleteAll(items_food);
 #endif
     deleteAll(items_misc);
+    deleteAll(items_talismans);
     deleteAll(items_other);
 
     if (!all_items_known && (last_char == '\\' || last_char == '-'))

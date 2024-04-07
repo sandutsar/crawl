@@ -70,6 +70,7 @@
 #include "mon-behv.h"
 #include "mon-death.h"
 #include "mon-place.h"
+#include "nearby-danger.h"
 #include "notes.h"
 #include "place.h"
 #include "prompt.h"
@@ -97,13 +98,19 @@
 #include "version.h"
 #include "view.h"
 #include "xom.h"
+#include "zot.h"
 
 #ifdef __ANDROID__
 #include <android/log.h>
+#define VERSIONED_CACHE_DIR
 #endif
 
 #ifndef F_OK // MSVC for example
 #define F_OK 0
+#endif
+
+#ifdef __HAIKU__
+#include <FindDirectory.h>
 #endif
 
 #define BONES_DIAGNOSTICS (defined(WIZARD) || defined(DEBUG_BONES) || defined(DEBUG_DIAGNOSTICS))
@@ -131,7 +138,7 @@ static bool _ghost_version_compatible(const save_version &version);
 
 static bool _restore_tagged_chunk(package *save, const string &name,
                                   tag_type tag, const char* complaint);
-static bool _read_char_chunk(package *save);
+static player_save_info _read_character_info(package *save);
 
 static bool _convert_obsolete_species();
 
@@ -156,27 +163,6 @@ static bool is_save_file_name(const string &name)
     if (off <= 0)
         return false;
     return !strcasecmp(name.c_str() + off, SAVE_SUFFIX);
-}
-
-// Returns the save_info from the save.
-static player_save_info _read_character_info(package *save)
-{
-    player_save_info fromfile;
-
-    // Backup before we clobber "you".
-    const player backup(you);
-    unwind_var<game_type> gtype(crawl_state.type);
-
-    try // need a redundant try block just so we can restore the backup
-    {   // (or risk an = operator on you getting misused)
-        fromfile.save_loadable = _read_char_chunk(save);
-        fromfile = you;
-    }
-    catch (ext_fail_exception &E) {}
-
-    you = backup;
-
-    return fromfile;
 }
 
 vector<string> get_dir_files_sorted(const string &dirname)
@@ -355,7 +341,7 @@ static bool _create_directory(const char *dir)
 {
     if (!mkdir_u(dir, 0755))
         return true;
-    if (errno == EEXIST) // might be not a directory
+    if (errno == EEXIST || errno == EROFS) // might be not a directory
         return dir_exists(dir);
     return false;
 }
@@ -418,6 +404,14 @@ string canonicalise_file_separator(const string &path)
 
 static vector<string> _get_base_dirs()
 {
+#ifdef __HAIKU__
+    char path[B_PATH_NAME_LENGTH];
+    find_path(B_APP_IMAGE_SYMBOL,
+            B_FIND_PATH_DATA_DIRECTORY,
+            "crawl/",
+            path,
+            B_PATH_NAME_LENGTH);
+#endif
     const string rawbases[] =
     {
 #ifdef DATA_DIR_PATH
@@ -430,8 +424,10 @@ static vector<string> _get_base_dirs()
         SysEnv.crawl_base + "../Resources/",
 #endif
 #ifdef __ANDROID__
-        ANDROID_ASSETS,
-        "/sdcard/Android/data/org.develz.crawl/files/",
+        ANDROID_ASSETS
+#endif
+#ifdef __HAIKU__
+        std::string(path),
 #endif
     };
 
@@ -475,8 +471,8 @@ static vector<string> _get_base_dirs()
 /**
  * check if `d` is a complete crawl data directory.
  *
- * @return MB_TRUE if yes, otherwise no. Returns MB_FALSE if there are some
- * but not all data subfolders.
+ * @return true if yes; returns maybe if there are some
+ * but not all data subfolders; otherwise, false.
  */
 maybe_bool validate_data_dir(const string &d)
 {
@@ -495,7 +491,7 @@ maybe_bool validate_data_dir(const string &d)
     };
 
     if (!dir_exists(d))
-        return MB_FALSE;
+        return false;
 
     bool everything = true;
     bool something = false;
@@ -506,7 +502,7 @@ maybe_bool validate_data_dir(const string &d)
         else
             everything = false;
     }
-    return everything ? MB_TRUE : something ? MB_MAYBE : MB_FALSE;
+    return everything ? true : something ? maybe_bool::maybe : false;
 }
 
 void validate_basedirs()
@@ -520,9 +516,9 @@ void validate_basedirs()
     for (const string &d : bases)
     {
         maybe_bool status = validate_data_dir(d);
-        if (status == MB_FALSE)
+        if (!status)
             continue; // empty or non-existent, ignore
-        else if (status == MB_MAYBE)
+        else if (status == maybe_bool::maybe)
         {
             // give an error for this case because this incomplete data
             // directory will be checked before others, possibly leading
@@ -534,7 +530,7 @@ void validate_basedirs()
                             d.c_str());
             }
         }
-        else // MB_TRUE -- found a complete data directory
+        else // true -- found a complete data directory
         {
             if (!found)
                 mprf(MSGCH_PLAIN, "Data directory '%s' found.", d.c_str());
@@ -563,9 +559,6 @@ string datafile_path(string basename, bool croak_on_fail, bool test_base_path,
     for (const string &basedir : _get_base_dirs())
     {
         string name = basedir + basename;
-#ifdef __ANDROID__
-        __android_log_print(ANDROID_LOG_INFO,"Crawl","Looking for %s as '%s'",basename.c_str(),name.c_str());
-#endif
         if (thing_exists(name))
             return name;
     }
@@ -965,10 +958,10 @@ NORETURN void print_save_json(const char *name)
         }
         else
         {
-            // ugh. This is a heavy-handed way to ensure that the savedir
-            // option is set correctly on the first parse_args pass.
-            // TODO: test on dgl...
-            Options.reset_options();
+            // Ensure that the savedir option is set correctly on the first
+            // parse_args pass.
+            // TODO: read initfile for local games?
+            Options.reset_paths();
 
             // treat `name` as a character name. Prints an empty json dict
             // if this is wrong (or if the character has no saves).
@@ -1065,16 +1058,13 @@ static int _get_dest_stair_type(dungeon_feature_type stair_taken,
         return DNGN_EXIT_DUNGEON;
     }
 
-    if (stair_taken == DNGN_EXIT_HELL)
-        return DNGN_ENTER_HELL;
-
-    if (stair_taken == DNGN_ENTER_HELL)
+    if (feat_is_hell_subbranch_exit(stair_taken))
         return DNGN_EXIT_HELL;
 
     if (player_in_hell() && feat_is_stone_stair_down(stair_taken))
     {
         find_first = false;
-        return DNGN_ENTER_HELL;
+        return branches[you.where_are_you].exit_stairs;
     }
 
     if (feat_is_stone_stair(stair_taken))
@@ -1101,7 +1091,8 @@ static int _get_dest_stair_type(dungeon_feature_type stair_taken,
         || stair_taken == DNGN_ENTER_COCYTUS
         || stair_taken == DNGN_ENTER_TARTARUS)
     {
-        return player_in_hell() ? DNGN_ENTER_HELL : stair_taken;
+        return player_in_hell() ? branches[you.where_are_you].exit_stairs
+                                : stair_taken;
     }
 
     if (feat_is_branch_exit(stair_taken))
@@ -1136,6 +1127,40 @@ static int _get_dest_stair_type(dungeon_feature_type stair_taken,
     return DNGN_FLOOR;
 }
 
+static bool _nonfriendly_nearby(coord_def p)
+{
+    for (monster_near_iterator mi(p); mi; ++mi)
+        if (!mi->friendly())
+            return true;
+    return false;
+}
+
+static bool _shaft_safely()
+{
+    // Loosely modelled on bring_to_safety(). Perhaps should be unified.
+    for (int tries = 0; tries < 1000; ++tries)
+    {
+        coord_def pos;
+        pos.x = random2(GXM);
+        pos.y = random2(GYM);
+
+        if (!in_bounds(pos)
+            || is_feat_dangerous(env.grid(pos), true)
+            || cloud_at(pos) // XXX: ignore if is_harmless_cloud?
+            || monster_at(pos)
+            || env.pgrid(pos) & FPROP_NO_TELE_INTO
+            || _nonfriendly_nearby(pos))
+        {
+            continue;
+        }
+
+        you.moveto(pos);
+        return true;
+    }
+
+    return false;
+}
+
 static void _place_player_on_stair(int stair_taken, const coord_def& dest_pos,
                                    const string &hatch_name)
 
@@ -1145,6 +1170,13 @@ static void _place_player_on_stair(int stair_taken, const coord_def& dest_pos,
             _get_dest_stair_type(static_cast<dungeon_feature_type>(stair_taken),
                                  find_first));
 
+    if (stair_type == DNGN_TRAP_SHAFT && you.where_are_you == BRANCH_DUNGEON)
+    {
+        // Shafts are scary enough in D without putting you near mons.
+        if (_shaft_safely())
+            return;
+        // If we can't find a safe place, fall through to default random placement.
+    }
     you.moveto(dgn_find_nearby_stair(stair_type, dest_pos, find_first,
                                      hatch_name));
 }
@@ -1155,7 +1187,7 @@ static void _clear_env_map()
     env.map_forgotten.reset();
 }
 
-static bool _grab_follower_at(const coord_def &pos, bool can_follow)
+static bool _grab_follower_at(const coord_def &pos)
 {
     if (pos == you.pos())
         return false;
@@ -1164,9 +1196,12 @@ static bool _grab_follower_at(const coord_def &pos, bool can_follow)
     if (!fol || !fol->alive() || fol->incapacitated())
         return false;
 
-    // only H's ancestors can follow into portals & similar.
-    if (!can_follow && !mons_is_hepliaklqana_ancestor(fol->type))
+    // Only friendlies can follow the player through portals
+    if (!fol->friendly() && (!is_connected_branch(you.where_are_you)
+                            || you.where_are_you == BRANCH_PANDEMONIUM))
+    {
         return false;
+    }
 
     // The monster has to already be tagged in order to follow.
     if (!testbits(fol->flags, MF_TAKING_STAIRS))
@@ -1195,9 +1230,8 @@ static bool _grab_follower_at(const coord_def &pos, bool can_follow)
 
 static void _grab_followers()
 {
-    const bool can_follow = branch_allows_followers(you.where_are_you);
-
     int non_stair_using_allies = 0;
+    int non_stair_using_undead = 0;
     int non_stair_using_summons = 0;
 
     monster* dowan = nullptr;
@@ -1219,10 +1253,10 @@ static void _grab_followers()
         if (fol->wont_attack() && !mons_can_use_stairs(*fol))
         {
             non_stair_using_allies++;
-            // If the class can normally use stairs it
-            // must have been a summon
-            if (mons_class_can_use_stairs(fol->type))
+            if (fol->is_summoned() || mons_is_conjured(fol->type))
                 non_stair_using_summons++;
+            if (fol->holiness() & MH_UNDEAD)
+                non_stair_using_undead++;
         }
     }
 
@@ -1247,7 +1281,7 @@ static void _grab_followers()
             duvessa->flags &= ~MF_TAKING_STAIRS;
     }
 
-    if (can_follow && non_stair_using_allies > 0)
+    if (non_stair_using_allies > 0)
     {
         // Summons won't follow and will time out.
         if (non_stair_using_summons > 0)
@@ -1257,9 +1291,11 @@ static void _grab_followers()
         }
         else
         {
+            const bool all_dead = non_stair_using_undead == non_stair_using_allies;
             // Permanent undead are left behind but stay.
-            mprf("Your mindless thrall%s behind.",
-                 non_stair_using_allies > 1 ? "s stay" : " stays");
+            mprf("Your mindless puppet%s behind%s.",
+                 non_stair_using_allies > 1 ? "s stay" : " stays",
+                 all_dead ? " to rot" : "");
         }
     }
 
@@ -1278,7 +1314,7 @@ static void _grab_followers()
                     continue;
 
                 visited[ai->x][ai->y] = true;
-                if (_grab_follower_at(*ai, can_follow))
+                if (_grab_follower_at(*ai))
                     places[!place_set].push_back(*ai);
             }
         }
@@ -1295,6 +1331,7 @@ static void _grab_followers()
             end_battlesphere(&mons, false);
         if (mons.type == MONS_SPECTRAL_WEAPON)
             end_spectral_weapon(&mons, false);
+        check_canid_farewell(mons, false);
         mons.flags &= ~MF_TAKING_STAIRS;
     }
 }
@@ -1456,6 +1493,7 @@ static void _place_player(dungeon_feature_type stair_taken,
 }
 
 // Update the trackers after the player changed level.
+// note: also run on load for some reason in startup.cc
 void trackers_init_new_level()
 {
     travel_init_new_level();
@@ -1484,7 +1522,7 @@ static const string VISITED_LEVELS_KEY = "visited_levels";
 // needs to happen.
 // before pregeneration, whether the level had been visited was synonymous with
 // whether it had been visited, but after, we need to track this information
-// more directly. It is also inferrable from turns_on_level, but you can't get
+// more directly. It is also inferable from turns_on_level, but you can't get
 // at that very easily without fully loading the level.
 // no need for a minor version here, though there will be a brief window of
 // offline pregen games that this doesn't handle right -- they will get things
@@ -1973,6 +2011,32 @@ static void _rescue_player_from_wall()
     }
 }
 
+#if TAG_MAJOR_VERSION == 34
+static void _fixup_transmuters()
+{
+    vector<pair<spell_type, talisman_type>> forms = {
+        { SPELL_BEASTLY_APPENDAGE, TALISMAN_BEAST },
+        { SPELL_SPIDER_FORM,       TALISMAN_FLUX },
+        { SPELL_ICE_FORM,          TALISMAN_SERPENT },
+        { SPELL_BLADE_HANDS,       TALISMAN_BLADE },
+        { SPELL_STATUE_FORM,       TALISMAN_STATUE },
+        { SPELL_DRAGON_FORM,       TALISMAN_DRAGON },
+        { SPELL_STORM_FORM,        TALISMAN_STORM },
+        { SPELL_NECROMUTATION,     TALISMAN_DEATH },
+    };
+    for (auto &p : forms) {
+        if (!you.has_spell(p.first))
+            continue;
+        int obj = items(false, OBJ_TALISMANS, p.second, 0);
+        if (obj == NON_ITEM)
+            continue;
+        // Funny but tragic if the player is over red or blue lava.
+        move_item_to_grid(&obj, you.pos(), true);
+        del_spell_from_memory(p.first);
+    }
+}
+#endif
+
 /**
  * Load the current level.
  *
@@ -1987,6 +2051,10 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
     if (!you.save->has_chunk(level_name) && load_mode == LOAD_VISITOR)
         return false;
 
+    const bool fast = load_mode == LOAD_ENTER_LEVEL_FAST;
+    if (fast)
+        load_mode = LOAD_ENTER_LEVEL;
+
     const bool make_changes =
         (load_mode == LOAD_START_GAME || load_mode == LOAD_ENTER_LEVEL);
 
@@ -1996,15 +2064,14 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
         _fixup_visited_from_package();
 #endif
 
-    // Did we get here by popping the level stack?
-    bool popped = false;
-
     coord_def return_pos; //TODO: initialize to null
 
     string hatch_name = "";
     if (feat_is_escape_hatch(stair_taken))
         hatch_name = _get_hatch_name();
 
+    // Did we get here by popping the level stack?
+    bool popped = false;
     if (load_mode != LOAD_VISITOR)
         popped = _leave_level(stair_taken, old_level, &return_pos);
 
@@ -2035,7 +2102,8 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
         // games.
         if (old_level.depth != -1)
         {
-            _grab_followers();
+            if (!crawl_state.game_is_descent())
+                _grab_followers();
 
             if (env.level_state & LSTATE_DELETED)
                 delete_level(old_level), dprf("<lightmagenta>Deleting level.</lightmagenta>");
@@ -2057,16 +2125,6 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
         tiles.load_dungeon(empty_vbuf, crawl_view.vgrdc);
     }
 #endif
-
-    if (load_mode != LOAD_VISITOR
-        && you.chapter == CHAPTER_POCKET_ABYSS
-        && player_in_branch(BRANCH_DUNGEON))
-    {
-        // If we're leaving the Abyss for the first time as a Chaos
-        // Knight of Lugonu (who start out there), enable normal monster
-        // generation.
-        you.chapter = CHAPTER_ORB_HUNTING;
-    }
 
     // GENERATE new level(s) when the file can't be opened:
     if (pregen_dungeon(level_id::current()))
@@ -2145,7 +2203,15 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
     if (make_changes || load_mode == LOAD_RESTART_GAME)
         env.markers.activate_all();
 
-    if (make_changes && env.elapsed_time && !just_created_level)
+    const bool descent_downclimb = crawl_state.game_is_descent()
+                                   && feat_stair_direction(stair_taken) == CMD_GO_DOWNSTAIRS
+                                   && !feat_is_descent_exitable(stair_taken);
+    const bool descent_peek = descent_downclimb
+                              && !feat_is_escape_hatch(stair_taken)
+                              && stair_taken != DNGN_TRAP_SHAFT
+                              && old_level.branch == you.where_are_you;
+
+    if (make_changes && env.elapsed_time && !just_created_level && !descent_peek)
         update_level(you.elapsed_time - env.elapsed_time);
 
     // Apply all delayed actions, if any. TODO: logic for marshalling this is
@@ -2179,10 +2245,14 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
     if (just_created_level && make_changes)
         replace_boris();
 
+    if (descent_peek && just_created_level)
+        descent_reveal_stairs();
+
     if (make_changes)
     {
         // Tell stash-tracker and travel that we've changed levels.
         trackers_init_new_level();
+        travel_cache.flush_invalid_waypoints();
         tile_new_level(just_created_level);
     }
     else if (load_mode == LOAD_RESTART_GAME)
@@ -2200,16 +2270,27 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
     // Things to update for player entering level
     if (load_mode == LOAD_ENTER_LEVEL)
     {
-        // new levels have less wary monsters, and we don't
-        // want them to attack players quite as soon:
-        you.time_taken *= (just_created_level ? 1 : 2);
-
-        you.time_taken = div_rand_round(you.time_taken * 3, 4);
-
-        dprf("arrival time: %d", you.time_taken);
+        if (descent_downclimb)
+        {
+            you.time_taken = 0; // free takebacks
+            if (!descent_peek)
+                descent_crumble_stairs(); // no sense waiting
+        }
+        else
+        {
+            // new stairs have less wary monsters, and we don't
+            // want them to attack players quite as soon.
+            // (just_created_level only relevant if we crashed.)
+            const bool fast_entry = fast || just_created_level;
+            you.time_taken *= fast_entry ? 1 : 2;
+            you.time_taken = div_rand_round(you.time_taken * 3, 4);
+        }
 
         if (just_created_level)
             run_map_epilogues();
+
+        // no cross-level pursuits
+        crawl_state.potential_pursuers.clear();
     }
 
     // Save the created/updated level out to disk:
@@ -2298,7 +2379,9 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
     if (just_created_level && make_changes)
     {
         you.attribute[ATTR_ABYSS_ENTOURAGE] = 0;
-        gozag_detect_level_gold(true);
+        gozag_count_level_gold();
+        if (branches[you.where_are_you].branch_flags & brflag::fully_map)
+            magic_mapping(GDM, 100, true, false, false, true, false);
     }
 
 
@@ -2320,8 +2403,8 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
                 && feat_stair_direction(feat) != CMD_NO_CMD
                 && feat_stair_direction(stair_taken) != CMD_NO_CMD)
             {
-                string stair_str = feature_description_at(you.pos(), false,
-                                                          DESC_THE);
+                string stair_str = feature_description(feat, NUM_TRAPS, "",
+                                                       DESC_THE);
                 string verb = stair_climb_verb(feat);
 
                 if (coinflip()
@@ -2347,11 +2430,8 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
             xom_new_level_noise_or_stealth();
     }
 
-    if (just_created_level && (load_mode == LOAD_ENTER_LEVEL
-                               || load_mode == LOAD_START_GAME))
-    {
+    if (just_created_level && make_changes)
         decr_zot_clock();
-    }
 
     // Initialize halos, etc.
     invalidate_agrid(true);
@@ -2369,6 +2449,9 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
     if (make_changes && you.position != env.old_player_pos)
        shake_off_monsters(you.as_player());
 
+    if (make_changes)
+        maybe_break_floor_gem();
+
 #if TAG_MAJOR_VERSION == 34
     if (make_changes && you.props.exists("zig-fixup")
         && you.where_are_you == BRANCH_TOMB
@@ -2383,6 +2466,9 @@ bool load_level(dungeon_feature_type stair_taken, load_mode_type load_mode,
         }
         you.props.erase("zig-fixup");
     }
+
+    if (load_mode == LOAD_RESTART_GAME)
+        _fixup_transmuters();
 #endif
 
     return just_created_level;
@@ -2505,6 +2591,14 @@ void save_game(bool leave_game, const char *farewellmsg)
     // If just save, early out.
     if (!leave_game)
     {
+#ifdef __ANDROID__
+        // Save everything before pause
+        clua.save_persist();
+        if (crawl_state.unsaved_macros)
+            macro_save();
+        if (!you.entering_level)
+            save_level(level_id::current());
+#endif
         if (!crawl_state.disables[DIS_SAVE_CHECKPOINTS])
         {
             you.save->commit();
@@ -2569,7 +2663,7 @@ static string _bones_permastore_file()
     // no matching permastore is in the player's bones file, but one exists in
     // the crawl distribution. Install it.
 
-    FILE *src = fopen(dist_full_path.c_str(), "rb");
+    FILE *src = fopen_u(dist_full_path.c_str(), "rb");
     if (!src)
     {
         mprf(MSGCH_ERROR, "Bones file exists but can't be opened: %s",
@@ -3042,13 +3136,14 @@ static bool _restore_game(const string& filename)
 
     you.save = new package((_get_savefile_directory() + filename).c_str(), true);
 
-    if (!_read_char_chunk(you.save))
+    player_save_info save_info = _read_character_info(you.save);
+    if (!save_info.save_loadable)
     {
         // Note: if we are here, the save info was properly read, it would
         // raise an exception otherwise.
-        if (yesno(("There is an existing game for name '" + you.your_name +
+        if (yesno(("There is an existing game for name '" + save_info.name +
                    "' from an incompatible version of Crawl ("
-                   + you.prev_save_version + ").\n"
+                   + save_info.prev_save_version + ").\n"
                    "Unless you reinstall that version, you can't load it.\n"
                    "Do you want to DELETE that game and start a new one?"
                   ).c_str(),
@@ -3059,40 +3154,41 @@ static bool _restore_game(const string& filename)
             return false;
         }
         if (Options.remember_name)
-            crawl_state.default_startup_name = you.your_name; // for main menu
+            crawl_state.default_startup_name = save_info.name; // for main menu
         you.save->abort();
         delete you.save;
         you.save = 0;
         game_ended(game_exit::abort,
-            you.your_name + " is from an incompatible version and can't be loaded.");
+                save_info.name
+                + " is from an incompatible version and can't be loaded.");
     }
 
     if (!crawl_state.bypassed_startup_menu
         && menu_game_type != crawl_state.type)
     {
         if (!yesno(("You already have a "
-                        + _type_name_processed(crawl_state.type) +
-                    " game saved under the name '" + you.your_name + "';\n"
+                        + _type_name_processed(save_info.saved_game_type) +
+                    " game saved under the name '" + save_info.name + "';\n"
                     "do you want to load that instead?").c_str(),
                    true, 'n'))
         {
             you.save->abort(); // don't even rewrite the header
             delete you.save;
             you.save = 0;
+            // explicitly don't set default startup name here
             game_ended(game_exit::abort,
                 "Please use a different name to start a new " +
                 _type_name_processed(menu_game_type) + " game, then.");
         }
     }
-
     if (Options.remember_name)
-        crawl_state.default_startup_name = you.your_name; // for main menu
+        crawl_state.default_startup_name = save_info.name; // for main menu
 
-    if (numcmp(you.prev_save_version.c_str(), Version::Long, 2) == -1
-        && version_is_stable(you.prev_save_version.c_str()))
+    if (numcmp(save_info.prev_save_version.c_str(), Version::Long, 2) == -1
+        && version_is_stable(save_info.prev_save_version.c_str()))
     {
         if (!yesno(("This game comes from a previous release of Crawl (" +
-                    you.prev_save_version + ").\n\nIf you load it now,"
+                    save_info.prev_save_version + ").\n\nIf you load it now,"
                     " you won't be able to go back. Continue?").c_str(),
                     true, 'n'))
         {
@@ -3100,9 +3196,11 @@ static bool _restore_game(const string& filename)
             delete you.save;
             you.save = 0;
             game_ended(game_exit::abort, "Please use version " +
-                you.prev_save_version + " to load " + you.your_name + " then.");
+                save_info.prev_save_version
+                + " to load " + save_info.name + " then.");
         }
     }
+    you.init_from_save_info(save_info);
 
     you.on_current_level = false; // we aren't on the current level until
                                   // everything is fully loaded
@@ -3131,7 +3229,7 @@ static bool _restore_game(const string& filename)
 
     if (you.save->has_chunk(CHUNK("kil", "kills")))
     {
-        reader inf(you.save, CHUNK("kil", "kills"),minorVersion);
+        reader inf(you.save, CHUNK("kil", "kills"), minorVersion);
         you.kills.load(inf);
     }
 
@@ -3232,8 +3330,40 @@ void delete_level(const level_id &level)
         save_abyss_uniques();
         destroy_abyss();
     }
+    // Since Pandemonium is internally all the same floor, we need to actually
+    // clean up our torch status whenever we leave a Pan floor so that the player
+    // will be able to use it on the next one.
+    else if (level.branch == BRANCH_PANDEMONIUM && you.religion == GOD_YREDELEMNUL)
+    {
+        CrawlHashTable &levels = you.props[YRED_TORCH_USED_KEY].get_table();
+        levels.erase(level.describe());
+    }
+
     _do_lost_monsters();
     _do_lost_items();
+}
+
+
+static bool &_get_excursions_allowed()
+{
+    static bool _allowed = true;
+    return _allowed;
+}
+
+bool level_excursions_allowed()
+{
+    return _get_excursions_allowed();
+}
+
+no_excursions::no_excursions()
+    : prev(level_excursions_allowed())
+{
+    _get_excursions_allowed() = false;
+}
+
+no_excursions::~no_excursions()
+{
+    _get_excursions_allowed() = prev;
 }
 
 // This class provides a way to walk the dungeon with a bit more flexibility
@@ -3241,6 +3371,7 @@ void delete_level(const level_id &level)
 level_excursion::level_excursion()
     : original(level_id::current()), ever_changed_levels(false)
 {
+    // could put an excursions allowed check here?
 }
 
 void level_excursion::go_to(const level_id& next)
@@ -3252,10 +3383,13 @@ void level_excursion::go_to(const level_id& next)
     // the abyss purposefully does level excursions in order to pick up
     // features from other levels and place them in the abyss: this is
     // basically safe to do, and seeding isn't a concern.
+    // TODO: reimplement with no_excursions?
     ASSERT(!crawl_state.generating_level || original.branch == BRANCH_ABYSS);
 
     if (level_id::current() != next)
     {
+        ASSERT(level_excursions_allowed());
+
         if (!you.level_visited(level_id::current()))
             travel_cache.erase_level_info(level_id::current());
 
@@ -3331,7 +3465,7 @@ static bool _convert_obsolete_species()
     {
         if (!yesno(
             "This Lava Orc save game cannot be loaded as-is. If you load it now,\n"
-            "your character will be converted to a Hill Orc. Continue?",
+            "your character will be converted to a Mountain Dwarf. Continue?",
                        false, 'N'))
         {
             you.save->abort(); // don't even rewrite the header
@@ -3341,7 +3475,7 @@ static bool _convert_obsolete_species()
                 "Please load the save in an earlier version "
                 "if you want to keep it as a Lava Orc.");
         }
-        change_species_to(SP_HILL_ORC);
+        change_species_to(SP_MOUNTAIN_DWARF);
         // No need for conservation
         you.innate_mutation[MUT_CONSERVE_SCROLLS]
                                 = you.mutation[MUT_CONSERVE_SCROLLS] = 0;
@@ -3356,19 +3490,29 @@ static bool _convert_obsolete_species()
     return false;
 }
 
-static bool _read_char_chunk(package *save)
+static bool _loadable_save_ver(int major, int minor)
+{
+#if TAG_MAJOR_VERSION == 34
+    if (major == 33 && minor == TAG_MINOR_0_11)
+        return true;
+#endif
+    return major == TAG_MAJOR_VERSION && minor <= TAG_MINOR_VERSION;
+}
+
+static player_save_info _read_character_info(package *save)
 {
     reader inf(save, "chr");
 
     try
     {
+        player_save_info result;
         const auto version = get_save_version(inf);
         const auto major = version.major, minor = version.minor;
         uint8_t format;
 
         unsigned int len = unmarshallInt(inf);
         if (len > 1024) // something is fishy
-            fail("Save file corrupted (info > 1KB)");
+            fail("Save file `%s` corrupted (info > 1KB)", save->get_filename().c_str());
         vector<unsigned char> buf;
         buf.resize(len);
         inf.read(&buf[0], len);
@@ -3382,24 +3526,24 @@ static bool _read_char_chunk(package *save)
             format = 0;
 
         if (format > TAG_CHR_FORMAT)
-            fail("Incompatible character data");
+        {
+            fail("Incompatible character data from the future in `%s`",
+                                        save->get_filename().c_str());
+        }
 
-        tag_read_char(th, format, major, minor);
+        result = tag_read_char_info(th, format, major, minor);
 
         // Check if we read everything only on the exact same version,
         // but that's the common case.
         if (major == TAG_MAJOR_VERSION && minor == TAG_MINOR_VERSION)
             inf.fail_if_not_eof("chr");
 
-#if TAG_MAJOR_VERSION == 34
-        if (major == 33 && minor == TAG_MINOR_0_11)
-            return true;
-#endif
-        return major == TAG_MAJOR_VERSION && minor <= TAG_MINOR_VERSION;
+        result.save_loadable = _loadable_save_ver(major, minor);
+        return result;
     }
     catch (short_read_exception &E)
     {
-        fail("Save file corrupted");
+        fail("Save file `%s` corrupted (short read)", save->get_filename().c_str());
     };
 }
 

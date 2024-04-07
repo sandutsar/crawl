@@ -49,8 +49,9 @@ vector<job_type> playable_jobs()
 vector<species_type> playable_species()
 {
     auto species = species::get_all_species();
-    erase_if(species, [&](species_type sp)
-                                { return !species::is_starting_species(sp); });
+    erase_if(species, [&](species_type sp) {
+        return !species::is_starting_species(sp);
+    });
     return species;
 }
 
@@ -107,7 +108,7 @@ static JsonNode *_species_modifiers(species_type sp)
     json_append_member(modifiers, "xp", json_mknumber(species::get_exp_modifier(sp)));
     json_append_member(modifiers, "hp", json_mknumber(species::get_hp_modifier(sp)));
     json_append_member(modifiers, "mp", json_mknumber(species::get_mp_modifier(sp)));
-    json_append_member(modifiers, "mr", json_mknumber(species::get_wl_modifier(sp)));
+    json_append_member(modifiers, "wl", json_mknumber(species::get_wl_modifier(sp)));
     return modifiers;
 }
 
@@ -201,7 +202,7 @@ static JsonNode *_combo_array()
  * @code
  *   { "<modifier-name>": <modifier> }
  * @endcode
- * where <modifier-name>: hp, mp, exp, mr.
+ * where <modifier-name>: hp, mp, exp, wl.
  */
 string playable_metadata_json()
 {

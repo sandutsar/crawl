@@ -12,11 +12,13 @@ all the same thing.
 %%%%
 Beogh
 
-Beogh is an evil deity, worshipped by the cave orcs native to the dungeon. Only
-orcs may devote their service to Beogh, and they must prove their devotion with
-bloodshed. Especially fervent devotees of Beogh will find orcish followers
-flocking to their banner: it is an age of signs and portents, and the orcs have
-become increasingly certain that the coming of their Messiah is nigh.
+A god of outcasts, pariahs, and the dispossessed, Beogh's altars are rarely
+found among those of other faiths, but their missionaries may always be sought
+by those looking for a place to belong. Worshippers will find many friends
+within the dungeon, and those who prove their strength to Beogh may gain
+lifelong companions the equal of any adventurer. To worship Beogh is to believe
+there is strength that transcends species and bloodline. To worship Beogh is to
+be an orc.
 %%%%
 Cheibriados
 
@@ -44,8 +46,8 @@ followers can convert to the Shining One or Zin while keeping some piety.
 %%%%
 Fedhas
 
-Fedhas is the god of plant and fungal life. Followers are forbidden from
-harming any species under Fedhas' protection. In return Fedhas grants a number
+Fedhas is the god of plant and fungal life. Followers are prevented from
+harming any species under Fedhas' protection. In return, Fedhas grants a number
 of abilities that promote the growth of plants and fungi. These abilities may
 incidentally prove useful to adventurers.
 %%%%
@@ -77,7 +79,7 @@ Jiyva
 
 Jiyva is the ancient deity of the slimes. Followers are expected to
 support the spread and satiation of their fellow slimes by allowing them to
-consume items, and are forbidden from harming any slimes. Especially favoured
+consume items, and are prevented from harming any slimes. Especially favoured
 followers will become as shapeless as their god, mutating wildly.
 %%%%
 Kikubaaqudgha
@@ -85,9 +87,9 @@ Kikubaaqudgha
 Kikubaaqudgha is a terrible Demon-God, served by those who wish to indulge in
 the powers of death. An evil god, Kikubaaqudgha requires worshippers to cause
 the death and destruction of as many creatures as possible. In exchange,
-Kikubaaqudgha offers great assistance to the aspiring necromancer: knowledge
-of dark magic, protection against necromantic backlash, and an endless supply of
-bodies taken from Kikubaaqudgha's vast mausoleum.
+Kikubaaqudgha offers great assistance to the aspiring necromancer: a supply of
+useful bodies, knowledge of dark magic, and protection against necromantic
+backlash.
 %%%%
 Lugonu
 
@@ -107,10 +109,10 @@ impure world and its false laws for their evil god's glory.
 %%%%
 Nemelex Xobeh
 
-Nemelex is a strange and unpredictable trickster god, whose powers are invoked
-through magical packs of cards painted in the ichor of demons. Followers will
-be granted decks of cards as they traverse the dungeon, and are encouraged to
-trust in the cards to provide them with divine assistance. However, the
+Nemelex is a strange and unpredictable chaotic trickster god, whose powers are
+invoked through magical packs of cards painted in the ichor of demons. Followers
+will be granted decks of cards as they traverse the dungeon, and are encouraged
+to trust in the cards to provide them with divine assistance. However, the
 Trickster can also ensure that fortune favours the bold.
 %%%%
 Okawaru
@@ -206,11 +208,11 @@ capricious. There is nothing a follower can do to influence Xom's mood.
 %%%%
 Yredelemnul
 
-Yredelemnul the Dark is a god worshipped by those who seek powers over death
-and the undead. Followers can raise legions of servile undead, and gain a
-number of other useful powers with which to make better use of the souls of
-the living. Yredelemnul especially favours those who would destroy holy
-creatures, which oppose the realm of undeath.
+Cast down by the good gods eons ago, Yredelemnul seeks to despoil their
+creations and chain all living souls within their inexorable grip. Followers who
+would conquer in their name are granted the power to reap an army of the dead
+and bind powerful souls into eternal service - provided they can sweep across
+the land in a tide as inexorable as the god themself.
 %%%%
 Zin
 
@@ -224,29 +226,31 @@ while keeping some piety.
 Ashenzari powers
 
 Ashenzari exhorts followers to curse their possessions, periodically offering
-these curses to worshippers as they explore. Cursed equipment cannot be enchanted
-and only be removed by shattering it forever. However, these curses do improve
-specific skills. They also please Ashenzari, who will reveal the invisible and
-grant clarity of mind. The truly devout will gain a fragment of Ashenzari's
-astral sight, letting them see through walls.
+these curses to worshippers as they explore. These curses grant improvements
+to specific skills, but cursed equipment cannot normally be enchanted and can
+only be removed by shattering it forever. As worshippers equip more cursed
+equipment, Ashenzari will grant increasing knowledge of the surrounding dungeon.
+Eventually, Ashenzari will reveal the invisible, grant clarity of mind, and
+protect worshippers from the Dungeon's malevolent forces.
 %%%%
 Beogh powers
 
-Followers of Beogh can smite their foes, and will even gain orcish followers of
-their own, who may be blessed by Beogh in battle and can be recalled as needed.
-Eventually, followers will gain the power to walk on water. Beogh will
-sometimes directly intervene to save a follower's life, and the chosen of
-Beogh will eventually be able to resurrect other fallen orcs.
+Worshippers will gain the power to call down Beogh's wrath upon their
+oppressors, and other orcs will start to see you as one of their own. Especially
+promising adherents will find themselves beset by rivals for Beogh's favor, but
+overcoming these trials without fleeing will gain you loyal companions whom
+Beogh will resurrect time and time again - just so long as you continue to fight
+and avenge in their name. A true chosen one may even rally an entire orcish army
+to avenge a wrongful death.
 %%%%
 Cheibriados powers
 
-Followers of Cheibriados move more slowly as they gain favour, and are rewarded
-for killing creatures who are faster than they are. As they move slower,
-worshippers of Cheibriados are granted increased attributes. Cheibriados
-rewards the faithful with the power to slow other creatures and the power to
-briefly distort the flow of time. Devout worshippers will gain the ability to
-inflict great harm on all those who move more quickly than they do, and finally
-the ability to step out of the flow of time entirely.
+Followers of Cheibriados move more slowly as they gain favour. As they move
+slower, worshippers of Cheibriados are granted increased attributes.
+Cheibriados rewards the faithful with the power to slow other creatures and the
+power to briefly distort the flow of time. Devout worshippers will gain the
+ability to inflict great harm on all those who move more quickly than they do,
+and finally the ability to step out of the flow of time entirely.
 %%%%
 Dithmenos powers
 
@@ -310,33 +314,34 @@ will always grant followers resistance to fire.
 %%%%
 Jiyva powers
 
-Jiyva will gradually fill the dungeon with jellies, which will rapidly consume
-nearby items as well as slowly consuming items from elsewhere in the dungeon.
-As they spread slime across more of the dungeon, Jiyva will grant followers
-increasingly rapid health and magic regeneration, and will begin mutating them
-to better reflect Jiyva's image. Followers will later become able to call forth
-acidic ooze from the walls of the dungeon, and to turn monsters to slime with a
-touch.
+Jiyva will gradually fill the dungeon with jellies. Your fellow slimes will
+rapidly consume nearby items as well as slowly consuming items from elsewhere
+in the dungeon. As they spread slime across more of the dungeon, Jiyva will
+grant followers increasingly rapid health and magic regeneration, and will
+begin mutating them to better reflect Jiyva's image. Followers will later
+become able to call forth acidic ooze from the walls of the dungeon, and to
+turn monsters to slime with a touch.
 %%%%
 Kikubaaqudgha powers
 
-Kikubaaqudgha will send corpses to followers, and enhance servants' necromantic
-prowess with gifts of Necromancy spells. Kikubaaqudgha will protect followers
-from the effects of necromantic miscasts, death curses, and may even shield them
-from unholy torment. Especially fervent followers may invoke torment themselves
-by sacrificing a cadaver, and Kikubaaqudgha will eventually allow followers to
-either receive knowledge of the most powerful and forbidden necromantic magic,
-or to have their weapon imbued with pain.
+Kikubaaqudgha will enhance servants' necromantic prowess with gifts of
+Necromancy spells. Kikubaaqudgha will protect followers from the effects of
+necromantic miscasts and death curses, and may even shield them from unholy
+torment. Followers can unearth dying wretches as necromantic fodder, and may
+invoke torment. Kikubaaqudgha will eventually allow followers to either receive
+knowledge of the most forbidden necromantic magic, or to have their weapon
+imbued with pain.
 %%%%
 Lugonu powers
 
-Followers of Lugonu gain powers to depart the Abyss at will, to bend space
-around themselves, and to banish monsters to the Abyss. Later they will be able
-to corrupt the ordered world, opening a gate for creatures of the Abyss to pass
-through, and to gate themselves directly into this realm of chaos. Lugonu will
-protect followers from the normally harmful effects of weapons imbued with the
-distorting energies of the Abyss, and eventually will offer to corrupt a
-follower's weapon in that way. Lugonu expects followers to spread unceasing
+Followers of Lugonu gain powers to depart the Abyss at will, to banish monsters
+there, and to flee back inside when needed. Lugonu will also banish nearby foes
+if any other god attempts to interfere with their followers. Later, followers
+will be able to corrupt the ordered world, opening a gate for creatures
+of the Abyss to pass through, and to gate themselves directly into this realm of
+chaos. Lugonu will protect followers who unwield weapons imbued with the
+distorting energies of the Abyss, and eventually will offer to distort a
+follower's melee weapon. Lugonu expects followers to spread unceasing
 chaos in the overworld, and as such does not grant piety to worshippers while
 they remain in the Abyss itself.
 %%%%
@@ -450,11 +455,9 @@ increasingly powerful destructive spells as they gain piety.
 Wu Jian powers
 
 Disciples of the Council learn to perform three martial techniques while moving
-around in combat. Martial techniques are incompatible with more elaborate
-methods of moving, and do not combine with charging, digging, hopping, or
-rampaging. They will also be taught to move at unfathomable speeds for short
-distances, and become able to summon a storm of golden clouds to increase their
-precision and damage for as long as they keep using martial attacks.
+around in combat. They will also be taught to move at unfathomable speeds for
+short distances, and become able to summon a storm of golden clouds to increase
+their precision and damage for as long as they keep using martial attacks.
 %%%%
 Xom powers
 
@@ -466,13 +469,14 @@ playthings...
 %%%%
 Yredelemnul powers
 
-Yredelemnul gives followers the power to raise skeletons and corpses, to recall
-undead followers to their vicinity, and to heal by draining the life force of
-living creatures. With sufficient piety, Yredelemnul can be called upon to
-mirror a follower's injuries onto attackers. Eventually, followers will gain
-the power to bind a monster's soul, and make it fight for them instead.
-Yredelemnul will sporadically gift followers increasingly powerful undead
-servants.
+Followers of Yredelemnul carry the Black Torch, allowing them to gather souls
+and surround themselves in darkness. They can raise foes who die in the light of
+the torch as mindless servants, hurl torchlight to scour the living and empower
+the dead, and bind especially noteworthy souls to fight for them in death with
+the full capacities they held in life. Especially devout worshippers can even
+call down the inescapable grip of the Fallen directly, binding foes helplessly
+in place as the very life is sucked from them. Yredelemnul will also dispatch
+undead servants to aid their followers at the start of each new conquest.
 %%%%
 Zin powers
 
@@ -480,8 +484,8 @@ Zin grants followers the ability to preach to the unenlightened masses, and
 powers to vitalise their bodies, protecting them from various afflictions.
 Later, followers gain the ability to imprison their foes temporarily. Followers
 can eventually find temporary safety in a divine refuge. As piety grows,
-followers will be protected from mutation, and Zin may even occasionally
-directly intervene to save a follower's life.
+followers will be protected from mutation and the Hells, and Zin may even
+occasionally directly intervene to save a follower's life.
 %%%%
 Ashenzari wrath
 
@@ -503,9 +507,8 @@ Cheibriados wrath
 
 Offenders against Cheibriados will find their movements remain slow while
 the attention of Cheibriados remains upon them, and will frequently have any
-magical hasting stripped away. They may also become further slowed and
-exhausted, be put to sleep, or have wild and unpredictable magical effects from
-the depths of time unleashed upon them.
+magical hasting stripped away. They may also become further slowed, be put
+to sleep, or have their bodies decay.
 %%%%
 Dithmenos wrath
 
@@ -518,7 +521,8 @@ to hide; or find themselves smothered in shadow and sleeping, perhaps forever.
 Elyvilon wrath
 
 Elyvilon is not a god known for wrath. Still, those earning Elyvilon's ire will
-find the Healer occasionally protecting their foes from death.
+find the Healer occasionally protecting their foes from their attacks, and even
+from death.
 %%%%
 Fedhas wrath
 
@@ -564,10 +568,10 @@ of slime mutations stripped away from them.
 Kikubaaqudgha wrath
 
 Kikubaaqudgha's wrath brings forth all the dread powers of necromancy. Victims
-are wracked with torment, assailed by the undead, smothered in miasma, and
-afflicted with a host of other necromantic ailments. Further, Kikubaaqudgha's
-gifts become tainted; those that attempt to use necromantic magic to fend off
-wrath will find it backfiring on them when least expected.
+are wracked with screams of torment, and find their health and powers drained.
+Further, Kikubaaqudgha's gifts become tainted: the dead rise again as foes, and
+those that attempt to use necromantic magic to fend off wrath will find it
+backfiring on them when least expected.
 %%%%
 Lugonu wrath
 
@@ -667,10 +671,8 @@ remains; the unfaithful are rewarded just as the faithful are punished.
 Yredelemnul wrath
 
 Those who anger Yredelemnul find themselves beset by legions of the dead.
-Novice adventurers will be assaulted by zombies and skeletons; veterans by
-the strongest of Yredelemnul's undead servants. The victims' own undead
-servants desert them and crumble into dust. A variety of necromantic maladies
-also afflict those stricken by Yredremnul's wrath.
+Sometimes, the god will also intervene directly, binding the unfaithful in
+inescapable chains as their dark army demonstrates the price of betrayal.
 %%%%
 Zin wrath
 
@@ -679,16 +681,20 @@ their enemies alerted, and their senses confounded by the
 axioms of Law; confusion, fainting and complete paralysis will be their lot.
 %%%%
 Wu Jian extra
-
-  .......       ....... (.) <lightred>Lunge</lightred>: Move directly towards an enemy to deal
-  ..<lightred>@</lightred>.O..  -->  ...<lightred>@</lightred>O.. extra damage.
+# any god extra screens need :nowrap
+:nowrap
+  .......       .......  (.) <lightred>Lunge</lightred>: Move directly towards an enemy to deal
+  ..<lightred>@</lightred>.O..  -->  ...<lightred>@</lightred>O..  extra damage.
   .......       .......
 
-  .......       ...<lightred>@</lightred>... (*) <lightred>Whirlwind</lightred>: Move between two tiles adjacent to
-  ...<lightred>@</lightred>O..  -->  ....O.. an enemy to strike them lightly. Multiple adjacent
-  .......       ....... foes can be attacked simultaneously this way.
+  .......       ...<lightred>@</lightred>...  (*) <lightred>Whirlwind</lightred>: Move between two tiles adjacent to
+  ...<lightred>@</lightred>O..  -->  ....O..  an enemy to strike them lightly. Multiple adjacent
+  .......       .......  foes can be attacked simultaneously this way.
 
-  ..#....       ..#.... (**) <lightred>Wall Jump</lightred>: Vault off a nearby wall and
-  ..#<lightred>@</lightred>O..  -->  ..#.O<lightred>@</lightred>. strike enemies adjacent to the landing spot. Vaulting
-  ..#....       ..#.... takes two turns. Activated via the (a)bility menu.
+  ..#....       ..#....  (**) <lightred>Wall Jump</lightred>: Vault off a nearby wall and strike
+  ..#<lightred>@</lightred>O..  -->  ..#.O<lightred>@</lightred>.  enemies adjacent to the landing spot. Vaulting takes
+  ..#....       ..#....  two turns. Activated via the (a)bility menu.
+
+These prevent enemies from getting free attacks on you while you move away.
+You cannot launch martial attacks while digging.
 %%%%

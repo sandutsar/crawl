@@ -23,7 +23,10 @@ public:
     random_var(int s, int e, weight_func w_ = nullptr);
     random_var(int s, int e, vector<int> ws);
 
+    random_var(const random_var &) = default;
+    random_var(random_var &&) = default;
     random_var& operator=(const random_var&) = default;
+    random_var& operator=(random_var&&) = default;
 
     int weight(int val) const;
     int roll() const;        // evaluate the random variable
@@ -34,8 +37,11 @@ public:
 
 protected:
     void init_weights(weight_func w);
+    void reduce_weights();
     void init();
     int roll2val(int r) const;
+
+    bool weights_divisible_by(int factor) const;
 };
 
 random_var operator+(const random_var& x, const random_var& y);

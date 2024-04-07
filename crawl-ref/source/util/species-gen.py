@@ -42,7 +42,7 @@ class Species(MutableMapping):
             'undead_type', 'size', 'str', 'int', 'dex', 'levelup_stats',
             'levelup_stat_frequency', 'recommended_jobs', 'recommended_weapons',
             'difficulty', 'difficulty_priority', 'create_enum', 'walking_verb',
-            'altar_action', 'mutations'}
+            'altar_action', 'mutations', 'child_name', 'orc_name'}
 
     def __init__(self, yaml_dict):
         self.backing_dict = dict()
@@ -124,7 +124,7 @@ class Species(MutableMapping):
         self['hp'] = validate_int_range(s['aptitudes']['hp'], 'hp', -10, 10)
         self['mp'] = validate_int_range(s['aptitudes']['mp_mod'], 'mp_mod',
                                                                         -5, 20)
-        self['mr'] = validate_int_range(s['aptitudes']['mr'], 'mr', 0, 20)
+        self['wl'] = validate_int_range(s['aptitudes']['wl'], 'wl', 0, 20)
         self['aptitudes'] = aptitudes(s['aptitudes'])
         self['habitat'] = 'HT_LAND' if not s.get('can_swim') else 'HT_WATER'
         self['undead'] = undead_type(s.get('undead_type', 'US_ALIVE'))
@@ -145,9 +145,11 @@ class Species(MutableMapping):
         self['difficulty_priority'] = validate_int_range(difficulty_priority(
             s.get('difficulty_priority', 0)), 'difficulty_priority', 0, 1000)
         self['create_enum'] = validate_bool(
-                                    s.get('create_enum', True), 'create_enum')
+                                    s.get('create_enum', False), 'create_enum')
         self['walking_verb'] = quote_or_nullptr('walking_verb', s)
         self['altar_action'] = quote_or_nullptr('altar_action', s)
+        self['child_name']   = quote_or_nullptr('child_name', s)
+        self['orc_name']     = quote_or_nullptr('orc_name', s)
 
         if 'TAG_MAJOR_VERSION' in s:
             self['tag_major_version_opener'] = (
@@ -175,19 +177,18 @@ SPECIES_GROUP_TEMPLATE = """
     }},
 """
 ALL_APTITUDES = ('fighting', 'short_blades', 'long_blades', 'axes',
-    'maces_and_flails', 'polearms', 'staves', 'slings', 'bows', 'crossbows',
+    'maces_and_flails', 'polearms', 'staves', 'ranged weapons',
     'throwing', 'armour', 'dodging', 'stealth', 'shields', 'unarmed_combat',
     'spellcasting', 'conjurations', 'hexes', 'summoning',
-    'necromancy', 'transmutations', 'translocations', 'fire_magic',
-    'ice_magic', 'air_magic', 'earth_magic', 'poison_magic', 'invocations',
-    'evocations')
+    'necromancy', 'translocations', 'fire_magic',
+    'ice_magic', 'air_magic', 'earth_magic', 'alchemy', 'invocations',
+    'evocations', 'shapeshifting')
 UNDEAD_TYPES = ('US_ALIVE', 'US_UNDEAD', 'US_SEMI_UNDEAD')
 SIZES = ('SIZE_TINY', 'SIZE_LITTLE', 'SIZE_SMALL', 'SIZE_MEDIUM', 'SIZE_LARGE',
     'SIZE_GIANT')
 ALL_STATS = ('str', 'int', 'dex')
 ALL_WEAPON_SKILLS = ('SK_SHORT_BLADES', 'SK_LONG_BLADES', 'SK_AXES',
-    'SK_MACES_FLAILS', 'SK_POLEARMS', 'SK_STAVES', 'SK_SLINGS', 'SK_BOWS',
-    'SK_CROSSBOWS', 'SK_UNARMED_COMBAT')
+    'SK_MACES_FLAILS', 'SK_POLEARMS', 'SK_STAVES', 'SK_RANGED_WEAPONS', 'SK_UNARMED_COMBAT')
 
 ALL_SPECIES_FLAGS = {'SPF_NO_HAIR', 'SPF_DRACONIAN', 'SPF_SMALL_TORSO',
     'SPF_NO_BONES', 'SPF_BARDING'}
@@ -320,9 +321,9 @@ def fake_mutations_short(fmut_def):
 
 def aptitudes(apts):
     for apt, val in apts.items():
-        if apt not in ALL_APTITUDES and apt not in ('xp', 'hp', 'mp_mod', 'mr'):
+        if apt not in ALL_APTITUDES and apt not in ('xp', 'hp', 'mp_mod', 'wl'):
             raise ValueError("Unknown aptitude (typo?): %s" % apt)
-        validate_int_range(val, apt, -10, 10)
+        validate_int_range(val, apt, -10, 20)
     return apts
 
 
@@ -351,12 +352,14 @@ def generate_aptitudes_data(s, template):
     # in YAML. The latter is UNUSABLE_SKILL.
     aptitudes = {apt: 0 for apt in ALL_APTITUDES}
     for apt, val in s['aptitudes'].items():
-        if apt in ('xp', 'hp', 'mp_mod', 'mr'):
+        if apt in ('xp', 'hp', 'mp_mod', 'wl'):
             continue
         if val is False:
             aptitudes[apt] = 'UNUSABLE_SKILL'
         else:
             aptitudes[apt] = val
+    aptitudes['tag_major_version_opener'] = s['tag_major_version_opener']
+    aptitudes['tag_major_version_closer'] = s['tag_major_version_closer']
     return template.format(enum = s['enum'], **aptitudes)
 
 

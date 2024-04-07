@@ -16,8 +16,10 @@ my %found_funcs   = ();
 
 my %field_type = (
     AC       => "num",
+    ACROBAT  => "bool",
     ANGRY    => "num",
     APPEAR   => "str",
+    ARCHMAGI => "bool",
     BASE_ACC => "num",
     BASE_DAM => "num",
     BASE_DELAY => "num",
@@ -33,6 +35,16 @@ my %field_type = (
     DESCRIP  => "str",
     DRAIN    => "bool",
     ELEC     => "bool",
+    ENH_CONJ => "bool",
+    ENH_HEXES => "bool",
+    ENH_SUMM => "bool",
+    ENH_NECRO => "bool",
+    ENH_TLOC => "bool",
+    ENH_FIRE => "bool",
+    ENH_ICE  => "bool",
+    ENH_AIR  => "bool",
+    ENH_EARTH => "bool",
+    ENH_ALCH => "bool",
     EV       => "num",
     EVIL     => "bool",
     FOG      => "bool",
@@ -60,9 +72,9 @@ my %field_type = (
     RANDAPP  => "bool",
     RCORR    => "bool",
     REGEN    => "num",
+    REGEN_MP => "num",
     RMSL     => "bool",
     RMUT     => "bool",
-    RND_TELE => "bool",
     SEEINV   => "bool",
     SKIP_EGO => "bool",
     SH       => "num",
@@ -86,6 +98,7 @@ my %field_type = (
     world_reacts_func  => "func",
     melee_effects_func => "func",
     launch_func        => "func",
+    death_effects_func => "func",
 
     plus      => "num",
     plus2     => "num",
@@ -200,7 +213,7 @@ sub finish_art
         $funcs = {};
     }
 
-    foreach my $func_name (qw(equip unequip world_reacts melee_effects launch))
+    foreach my $func_name (qw(equip unequip world_reacts melee_effects launch death_effects))
     {
         my $val;
         if ($funcs->{$func_name})
@@ -525,34 +538,40 @@ my @art_order = (
     "flags",
 
 # start TAG_MAJOR_VERSION == 34
-    # Remove five copies of "unused", when
+    # Remove six copies of "unused", when
     # it is no longer the case that TAG_MAJOR_VERSION == 34
     "{", "BRAND", "AC", "EV", "STR", "INT", "DEX", "\n",
     "FIRE", "COLD", "ELEC", "POISON", "LIFE", "WILL", "\n",
     "SEEINV", "INV", "FLY", "BLINK", "unused",  "NOISES", "\n",
-    "NOSPELL", "RND_TELE", "NOTELEP", "ANGRY", "unused", "\n",
+    "NOSPELL", "unused", "NOTELEP", "ANGRY", "unused", "\n",
     "MUTATE", "unused", "SLAY", "unused", "STEALTH", "MP", "\n",
     "BASE_DELAY", "HP", "CLARITY", "BASE_ACC", "BASE_DAM", "\n",
     "RMSL", "unused", "REGEN", "unused", "NO_UPGRADE", "RCORR", "\n",
     "RMUT", "unused", "CORRODE", "DRAIN", "SLOW", "FRAGILE", "\n",
-    "SH", "HARM", "RAMPAGE", "\n",
+    "SH", "HARM", "RAMPAGE", "ARCHMAGI", "ENH_CONJ", "ENH_HEXES", "\n",
+    "ENH_SUMM", "ENH_NECRO", "ENH_TLOC", "unused", "ENH_FIRE", "\n",
+    "ENH_ICE", "ENH_AIR", "ENH_EARTH", "ENH_ALCH", "\n",
+    "ACROBAT", "REGEN_MP",
     "}",
 # end TAG_MAJOR_VERSION
 # start TAG_MAJOR_VERSION == 35
 #     "{", "BRAND", "AC", "EV", "STR", "INT", "DEX", "\n",
 #     "FIRE", "COLD", "ELEC", "POISON", "LIFE", "WILL", "\n",
 #     "SEEINV", "INV", "FLY", "BLINK", "NOISES", "\n",
-#     "NOSPELL", "RND_TELE", "NOTELEP", "ANGRY", "\n",
+#     "NOSPELL", "NOTELEP", "ANGRY", "\n",
 #     "MUTATE", "SLAY", "STEALTH", "MP", "\n",
 #     "BASE_DELAY", "HP", "CLARITY", "BASE_ACC", "BASE_DAM", "\n",
 #     "RMSL", "REGEN", "NO_UPGRADE", "RCORR", "\n",
 #     "RMUT", "CORRODE", "DRAIN", "SLOW", "FRAGILE", "\n",
-#     "SH", "HARM", "\n",
+#     "SH", "HARM", "RAMPAGE", "ARCHMAGI", "ENH_CONJ", "ENH_HEXES", "\n",
+#     "ENH_SUMM", "ENH_NECRO", "ENH_TLOC", "ENH_FIRE", "\n",
+#     "ENH_ICE", "ENH_AIR", "ENH_EARTH", "ENH_ALCH", "\n",
+#     "ACROBAT", "REGEN_MP",
 #     "}",
 # end TAG_MAJOR_VERSION
 
     "equip_func", "unequip_func", "world_reacts_func", "melee_effects_func",
-    "launch_func"
+    "launch_func", "death_effects_func"
 );
 
 sub art_to_str
@@ -883,7 +902,8 @@ HEADER_END
             next;
         }
         elsif ($artefact->{sub_type} =~ /_SHIELD/
-               || $artefact->{sub_type} =~ /_BUCKLER/)
+               || $artefact->{sub_type} =~ /_BUCKLER/
+               || $artefact->{sub_type} =~ /_ORB/)
         {
             $part = "HAND2";
         }
@@ -1037,6 +1057,7 @@ my %valid_func = (
     world_reacts  => 1,
     melee_effects => 1,
     launch        => 1,
+    death_effects => 1,
 );
 
 sub read_funcs
@@ -1090,7 +1111,7 @@ sub read_data
         # Strip comments.
         s/#.*//;
 
-        # Strip trailing whitspace; leading whitespace indicates the
+        # Strip trailing whitespace; leading whitespace indicates the
         # continuation of a string field.
         s/\s*$//;
 

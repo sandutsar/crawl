@@ -19,35 +19,35 @@
 #include "tiles-build-specific.h"
 #include "unicode.h"
 #include "viewgeom.h"
-#if defined(USE_TILE_LOCAL) && defined(TOUCH_UI)
-#include "windowmanager.h"
-#endif
 #ifdef USE_TILE_LOCAL
 #include "tilefont.h"
 #endif
 #include "ui.h"
 
+// only used in fake shift/ctrl handling, I guess this is to really make sure
+// they work?
 static keycode_type _numpad2vi(keycode_type key)
 {
-#if defined(UNIX) && !defined(USE_TILE_LOCAL)
-    key = unixcurses_get_vi_key(key);
-#endif
     switch (key)
     {
-    case CK_UP:    key = 'k'; break;
-    case CK_DOWN:  key = 'j'; break;
-    case CK_LEFT:  key = 'h'; break;
-    case CK_RIGHT: key = 'l'; break;
-#if defined(UNIX) && !defined(USE_TILE_LOCAL)
-    case -1001:    key = 'b'; break;
-    case -1002:    key = 'j'; break;
-    case -1003:    key = 'n'; break;
-    case -1004:    key = 'h'; break;
-    case -1005:    key = '.'; break;
-    case -1006:    key = 'l'; break;
-    case -1007:    key = 'y'; break;
-    case -1008:    key = 'k'; break;
-    case -1009:    key = 'u'; break;
+    case CK_HOME:        key = 'y'; break;
+    case CK_END:         key = 'b'; break;
+    case CK_PGUP:        key = 'u'; break;
+    case CK_PGDN:        key = 'n'; break;
+    case CK_UP:          key = 'k'; break;
+    case CK_DOWN:        key = 'j'; break;
+    case CK_LEFT:        key = 'h'; break;
+    case CK_RIGHT:       key = 'l'; break;
+#if defined(UNIX)
+    case CK_NUMPAD_1:    key = 'b'; break;
+    case CK_NUMPAD_2:    key = 'j'; break;
+    case CK_NUMPAD_3:    key = 'n'; break;
+    case CK_NUMPAD_4:    key = 'h'; break;
+    case CK_NUMPAD_5:    key = '.'; break;
+    case CK_NUMPAD_6:    key = 'l'; break;
+    case CK_NUMPAD_7:    key = 'y'; break;
+    case CK_NUMPAD_8:    key = 'k'; break;
+    case CK_NUMPAD_9:    key = 'u'; break;
 #endif
     }
     if (key >= '1' && key <= '9')
@@ -56,6 +56,53 @@ static keycode_type _numpad2vi(keycode_type key)
         return keycode_type(vikeys[key - '1']);
     }
     return key;
+}
+
+keycode_type numpad_to_regular(keycode_type key, bool keypad)
+{
+    switch (key)
+    {
+    case CK_NUMPAD_SUBTRACT:
+    case CK_NUMPAD_SUBTRACT2:
+        return '-';
+    case CK_NUMPAD_ADD:
+    case CK_NUMPAD_ADD2:
+        return '+';
+    case CK_NUMPAD_DECIMAL:
+        return '.';
+    case CK_NUMPAD_MULTIPLY:
+        return '*';
+    case CK_NUMPAD_DIVIDE:
+        return '/';
+    case CK_NUMPAD_EQUALS:
+        return '=';
+    case CK_NUMPAD_ENTER:
+        return CK_ENTER;
+#define KP_PAIR(a, b) (keypad ? static_cast<keycode_type>(a) : static_cast<keycode_type>(b))
+    case CK_NUMPAD_7:
+        return KP_PAIR(CK_HOME, '7');
+    case CK_NUMPAD_8:
+        return KP_PAIR(CK_UP, '8');
+    case CK_NUMPAD_9:
+        return KP_PAIR(CK_PGUP, '9');
+    case CK_NUMPAD_4:
+        return KP_PAIR(CK_LEFT, '4');
+    case CK_NUMPAD_5:
+        return '5';
+    case CK_NUMPAD_6:
+        return KP_PAIR(CK_RIGHT, '6');
+    case CK_NUMPAD_1:
+        return KP_PAIR(CK_END, '1');
+    case CK_NUMPAD_2:
+        return KP_PAIR(CK_DOWN, '2');
+    case CK_NUMPAD_3:
+        return KP_PAIR(CK_PGDN, '3');
+    case CK_NUMPAD_0:
+        return '0';
+#undef KP_PAIR
+    default:
+        return key;
+    }
 }
 
 // Save and restore the cursor region.
@@ -78,6 +125,30 @@ private:
     coord_def pos;
 };
 
+// Convert letters (and 6 other characters) to control codes. Don't change
+// anything else.
+// Uses int instead of char32_t to match the caller.
+static inline int _control_safe(int c)
+{
+    // XX not strictly accurate for local tiles
+    if (c >= 'A'-1 && c < 'A'+' '-1) // ASCII letters and @ [ \ ] ^ _ `
+        return CONTROL(c);
+    else if (c >= 'a' && c <= 'z') // ASCII letters
+        return LC_CONTROL(c);
+    else
+        return c; // anything else
+}
+
+static bool _check_numpad(int key, int tocheck, KeymapContext keymap)
+{
+    // collapse numpad keys, but only if there is no keybinding for a numpad
+    // key specifically.
+    // TODO: should this pattern be used basically everywhere?
+    const int remapped = numpad_to_regular(key);
+    return remapped == tocheck &&
+                (remapped == key || key_to_command(key, keymap) == CMD_NO_CMD);
+}
+
 int unmangle_direction_keys(int keyin, KeymapContext keymap,
                             bool allow_fake_modifiers)
 {
@@ -88,28 +159,18 @@ int unmangle_direction_keys(int keyin, KeymapContext keymap,
     if (allow_fake_modifiers && Options.use_modifier_prefix_keys)
     {
         /* can we say yuck? -- haranp */
-        if (keyin == '*'
-#ifndef USE_TILE_LOCAL
-            || keyin == CK_NUMPAD_MULTIPLY
-                && key_to_command(keyin, KMC_DEFAULT) == CMD_NO_CMD
-#endif
-            )
+        if (_check_numpad(keyin, '*', keymap))
         {
             unwind_cursor saved(1, crawl_view.msgsz.y, GOTO_MSG);
             cprintf("CTRL");
             webtiles_send_more_text("CTRL");
 
             keyin = getchm(keymap);
-            // return control-key
-            keyin = CONTROL(toupper_safe(_numpad2vi(keyin)));
+            // return control-key, if there is one.
+            keyin = _control_safe(_numpad2vi(keyin));
             webtiles_send_more_text("");
         }
-        else if (keyin == '/'
-#ifndef USE_TILE_LOCAL
-            || keyin == CK_NUMPAD_DIVIDE
-                && key_to_command(keyin, KMC_DEFAULT) == CMD_NO_CMD
-#endif
-            )
+        else if (_check_numpad(keyin, '/', keymap))
         {
             unwind_cursor saved(1, crawl_view.msgsz.y, GOTO_MSG);
             cprintf("SHIFT");
@@ -134,11 +195,6 @@ int unmangle_direction_keys(int keyin, KeymapContext keymap,
     case '7': return 'y';
     case '8': return 'k';
     case '9': return 'u';
-
-# ifndef USE_TILE_LOCAL
-    default: return unixcurses_get_vi_key(keyin);
-# endif
-
 #else
     case '1': return 'B';
     case '2': return 'J';
@@ -589,6 +645,7 @@ int line_reader::process_key_core(int ch)
         buffer[0] = '\0';
         return 0;
     }
+    ch = numpad_to_regular(ch); // is this overkill?
 
     if (keyfn)
     {
@@ -645,11 +702,6 @@ int line_reader::read_line(bool clear_previous, bool reset_cursor)
 
     if (clear_previous)
         *buffer = 0;
-
-#if defined(USE_TILE_LOCAL) && defined(TOUCH_UI)
-    if (wm)
-        wm->show_keyboard();
-#endif
 
 #ifdef USE_TILE_WEB
     tiles.redraw();
@@ -870,6 +922,7 @@ void line_reader::insert_char_at_cursor(int ch)
 
 int line_reader::process_key(int ch)
 {
+
     switch (ch)
     {
     CASE_ESCAPE
@@ -1030,11 +1083,6 @@ int fontbuf_line_reader::read_line(bool clear_previous, bool reset_cursor)
 
     if (clear_previous)
         *buffer = 0;
-
-#if defined(USE_TILE_LOCAL) && defined(TOUCH_UI)
-    if (wm)
-        wm->show_keyboard();
-#endif
 
     cursor_control con(true);
 

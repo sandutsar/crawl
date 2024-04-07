@@ -58,7 +58,7 @@ define(function () {
     exports.equip.HELMET = val++;
     exports.equip.GLOVES = val++;
     exports.equip.BOOTS = val++;
-    exports.equip.SHIELD = val++;
+    exports.equip.OFFHAND = val++;
     exports.equip.BODY_ARMOUR = val++;
     exports.equip.LEFT_RING = val++;
     exports.equip.RIGHT_RING = val++;
@@ -170,59 +170,34 @@ define(function () {
     fg_flags.flags.S_UNDER = 0x00040000;
     fg_flags.flags.FLYING  = 0x00080000;
 
-    // 3 mutually exclusive flags for behaviour.
+    // 4 mutually exclusive flags for behaviour.
     fg_flags.exclusive_flags.push({
-        mask       : 0x00300000,
+        mask       : 0x00700000,
         STAB       : 0x00100000,
         MAY_STAB   : 0x00200000,
         FLEEING    : 0x00300000,
+        PARALYSED  : 0x00400000,
     });
 
-    fg_flags.flags.NET          = 0x00400000;
-    // 0x00800000 is used in the POISON 2-bit exclusive flags
+    fg_flags.flags.NET          = 0x00800000;
     fg_flags.flags.WEB          = 0x01000000;
-    fg_flags.flags.GLOWING      = 0x02000000;
-    fg_flags.flags.STICKY_FLAME = 0x04000000;
-    fg_flags.flags.BERSERK      = 0x08000000;
-    fg_flags.flags.INNER_FLAME  = 0x10000000;
-    fg_flags.flags.CONSTRICTED  = 0x20000000;
-    fg_flags.flags.SLOWED       = [0, 0x080];
-    fg_flags.flags.PAIN_MIRROR  = [0, 0x100];
-    fg_flags.flags.HASTED       = [0, 0x200];
-    fg_flags.flags.MIGHT        = [0, 0x400];
-    fg_flags.flags.PETRIFYING   = [0, 0x800];
-    fg_flags.flags.PETRIFIED    = [0, 0x1000];
-    fg_flags.flags.BLIND        = [0, 0x2000];
-    fg_flags.flags.ANIM_WEP     = [0, 0x4000];
-    fg_flags.flags.SUMMONED     = [0, 0x8000];
-    fg_flags.flags.PERM_SUMMON  = [0, 0x10000];
-    fg_flags.flags.FIRE_CHAMP   = [0, 0x20000];
-    fg_flags.flags.RECALL       = [0, 0x40000];
-    fg_flags.flags.DRAIN        = [0, 0x80000];
-    fg_flags.flags.IDEALISED    = [0, 0x100000];
-    fg_flags.flags.BOUND_SOUL   = [0, 0x200000];
-    fg_flags.flags.INFESTED     = [0, 0x400000];
-    fg_flags.flags.CORRODED     = [0, 0x800000];
-    fg_flags.flags.SWIFT        = [0, 0x1000000];
-    fg_flags.flags.SLOWLY_DYING = [0, 0x2000000];
-    fg_flags.flags.VILE_CLUTCH  = [0, 0x4000000];
-    fg_flags.flags.POSSESSABLE  = [0, 0x8000000];
 
     // Three levels of poison in 2 bits.
     fg_flags.exclusive_flags.push({
-        mask        : [0x00800000, 0x10000000],
-        POISON      : [0x00800000, 0],
+        mask        : [0, 0x18000000],
+        POISON      : [0, 0x08000000],
         MORE_POISON : [0, 0x10000000],
-        MAX_POISON  : [0x00800000, 0x10000000]
+        MAX_POISON  : [0, 0x18000000]
     });
 
-    // Threat level has 4 possibilities, so uses 3 bits.
+    // 5 mutually exclusive flags for threat level.
     fg_flags.exclusive_flags.push({
         mask       : [0, 0x60000000 | highbit],
         TRIVIAL    : [0, 0x20000000],
         EASY       : [0, 0x40000000],
         TOUGH      : [0, 0x60000000],
-        NASTY      : [0, highbit]
+        NASTY      : [0, highbit],
+        UNUSUAL    : [0, 0x60000000 | highbit],
     });
 
     // MDAM has 5 possibilities, so uses 3 bits.
@@ -273,11 +248,8 @@ define(function () {
     bg_flags.flags.KRAKEN_SE  = highbit;
     bg_flags.flags.KRAKEN_SW  = [0, 0x01];
 
-    // Eldritch tentacle overlays.
-    bg_flags.flags.ELDRITCH_NW = [0, 0x02];
-    bg_flags.flags.ELDRITCH_NE = [0, 0x04];
-    bg_flags.flags.ELDRITCH_SE = [0, 0x08];
-    bg_flags.flags.ELDRITCH_SW = [0, 0x10];
+    bg_flags.flags.RAMPAGE     = [0, 0x020];
+
     bg_flags.flags.LANDING     = [0, 0x200];
     bg_flags.flags.RAY_MULTI   = [0, 0x400];
     bg_flags.mask              = 0x0000FFFF;
@@ -305,10 +277,10 @@ define(function () {
     mf.NOSELECT         = 0x0001;
     mf.SINGLESELECT     = 0x0002;
     mf.MULTISELECT      = 0x0004;
-    mf.NO_SELECT_QTY    = 0x0008;
+    mf.SELECT_QTY       = 0x0008;
     mf.ANYPRINTABLE     = 0x0010;
     mf.SELECT_BY_PAGE   = 0x0020;
-    mf.ALWAYS_SHOW_MORE = 0x0040;
+    mf.INIT_HOVER       = 0x0040;
     mf.WRAP             = 0x0080;
     mf.ALLOW_FILTER     = 0x0100;
     mf.ALLOW_FORMATTING = 0x0200;

@@ -35,14 +35,14 @@ static const char *daction_names[] =
     "unholy/evil go hostile",
     "unclean/chaotic go hostile",
     "spellcasters go hostile",
-    "yred slaves go hostile",
+    "yred bound souls go hostile",
     "beogh orcs and their summons go hostile",
     "fellow slimes go hostile",
     "plants go hostile (allowing reconversion)",
     0, 0, 0, 0, 0, 0, 0, 0,
 
     // Actions not needing a counter.
-    "old enslaved souls go poof",
+    "old bound souls go poof",
 #if TAG_MAJOR_VERSION == 34
     "holy beings allow another conversion attempt",
 #else
@@ -54,7 +54,7 @@ static const char *daction_names[] =
     "reclaim decks",
 #endif
     "reapply passive mapping",
-    "remove Jiyva altars",
+    "remove Jiyva altars and prayers",
     "Pikel's minions go poof",
     "corpses rot",
 #if TAG_MAJOR_VERSION == 34
@@ -76,6 +76,7 @@ static const char *daction_names[] =
     "ancestor vanishes",
     "upgrade ancestor",
     "remove Ignis altars",
+    "cleanup Beogh vengeance markers",
 };
 #endif
 
@@ -86,9 +87,6 @@ bool mons_matches_daction(const monster* mon, daction_type act)
 
     switch (act)
     {
-    case DACT_ALLY_YRED_SLAVE:
-        // Changed: we don't force enslavement of those merely marked.
-        return is_yred_undead_slave(*mon);
     case DACT_ALLY_BEOGH: // both orcs and demons summoned by high priests
         return mon->wont_attack() && mons_is_god_gift(*mon, GOD_BEOGH);
     case DACT_ALLY_SLIME:
@@ -104,11 +102,10 @@ bool mons_matches_daction(const monster* mon, daction_type act)
     // Not a stored counter:
     case DACT_PIKEL_MINIONS:
         return mon->type == MONS_LEMURE
-               && testbits(mon->flags, MF_BAND_MEMBER)
                && mon->props.exists(PIKEL_BAND_KEY);
 
     case DACT_OLD_CHARMD_SOULS_POOF:
-        return mons_enslaved_soul(*mon);
+        return mon->type == MONS_BOUND_SOUL;
 
     case DACT_SLIME_NEW_ATTEMPT:
         return mons_is_slime(*mon);
@@ -130,6 +127,14 @@ bool mons_matches_daction(const monster* mon, daction_type act)
 
     case DACT_SET_BRIBES:
         return !testbits(mon->flags, MF_WAS_IN_VIEW);
+
+    case DACT_JIYVA_DEAD:
+        return mon->type == MONS_DISSOLUTION;
+
+    case DACT_BEOGH_VENGEANCE_CLEANUP:
+        return mon->has_ench(ENCH_VENGEANCE_TARGET)
+               && mon->get_ench(ENCH_VENGEANCE_TARGET).degree
+                  <= you.props[BEOGH_VENGEANCE_NUM_KEY].get_int();
 
     default:
         return false;
@@ -177,13 +182,6 @@ void apply_daction_to_mons(monster* mon, daction_type act, bool local,
     // See _daction_hog_to_human for an example.
     switch (act)
     {
-        case DACT_ALLY_YRED_SLAVE:
-            if (mon->type == MONS_ZOMBIE)
-            {
-                simple_monster_message(*mon, " crumbles into dust!");
-                monster_die(*mon, KILL_DISMISSED, NON_MONSTER);
-                break;
-            }
         case DACT_ALLY_BEOGH:
         case DACT_ALLY_SLIME:
         case DACT_ALLY_PLANT:
@@ -202,6 +200,11 @@ void apply_daction_to_mons(monster* mon, daction_type act, bool local,
             break;
 
         case DACT_ALLY_HEPLIAKLQANA:
+            // Skip this if we have since regained enough piety to get our
+            // ancestor back.
+            if (you_worship(GOD_HEPLIAKLQANA) && piety_rank() >= 1)
+                break;
+
             simple_monster_message(*mon, " returns to the mists of memory.");
             monster_die(*mon, KILL_DISMISSED, NON_MONSTER);
             break;
@@ -212,6 +215,10 @@ void apply_daction_to_mons(monster* mon, daction_type act, bool local,
             break;
 
         case DACT_OLD_CHARMD_SOULS_POOF:
+            // Skip if this is our CURRENT bound soul (ie: in our companion list)
+            if (companion_list.count(mon->mid))
+                break;
+
             simple_monster_message(*mon, " is freed.");
             // The monster disappears.
             monster_die(*mon, KILL_DISMISSED, NON_MONSTER);
@@ -252,6 +259,18 @@ void apply_daction_to_mons(monster* mon, daction_type act, bool local,
 
         case DACT_SET_BRIBES:
             gozag_set_bribe(mon);
+            break;
+
+        case DACT_JIYVA_DEAD:
+            mon->spells.clear();
+            mon->spells.push_back( { SPELL_CANTRIP, 62, MON_SPELL_PRIEST } );
+            mon->props[CUSTOM_SPELLS_KEY] = true;
+            break;
+
+        case DACT_BEOGH_VENGEANCE_CLEANUP:
+            mon->del_ench(ENCH_VENGEANCE_TARGET);
+            mon->patrol_point.reset();
+            break;
 
         // The other dactions do not affect monsters directly.
         default:
@@ -266,7 +285,13 @@ static void _apply_daction(daction_type act)
 
     switch (act)
     {
-    case DACT_ALLY_YRED_SLAVE:
+    case DACT_JIYVA_DEAD:
+        for (rectangle_iterator ri(1); ri; ++ri)
+        {
+            if (env.grid(*ri) == DNGN_ALTAR_JIYVA)
+                env.grid(*ri) = DNGN_FLOOR;
+        }
+    // intentional fallthrough to handle Dissolution
     case DACT_ALLY_BEOGH:
     case DACT_ALLY_HEPLIAKLQANA:
     case DACT_ALLY_SLIME:
@@ -277,6 +302,7 @@ static void _apply_daction(daction_type act)
     case DACT_KIRKE_HOGS:
     case DACT_BRIBE_TIMEOUT:
     case DACT_SET_BRIBES:
+    case DACT_BEOGH_VENGEANCE_CLEANUP:
         for (monster_iterator mi; mi; ++mi)
         {
             if (mons_matches_daction(*mi, act))
@@ -292,13 +318,6 @@ static void _apply_daction(daction_type act)
     case DACT_REAUTOMAP:
         reautomap_level();
         break;
-    case DACT_REMOVE_JIYVA_ALTARS:
-        for (rectangle_iterator ri(1); ri; ++ri)
-        {
-            if (env.grid(*ri) == DNGN_ALTAR_JIYVA)
-                env.grid(*ri) = DNGN_FLOOR;
-        }
-        break;
     case DACT_REMOVE_IGNIS_ALTARS:
         for (rectangle_iterator ri(1); ri; ++ri)
             if (env.grid(*ri) == DNGN_ALTAR_IGNIS)
@@ -310,7 +329,7 @@ static void _apply_daction(daction_type act)
                 item.freshness = 1; // thoroughly rotten
         break;
     case DACT_GOLD_ON_TOP:
-        gozag_detect_level_gold(false);
+        gozag_move_level_gold_to_top();
         break;
     case DACT_REMOVE_GOZAG_SHOPS:
     {
@@ -346,6 +365,7 @@ static void _apply_daction(daction_type act)
     case DACT_ALLY_UNHOLY_EVIL:
     case DACT_ALLY_UNCLEAN_CHAOTIC:
     case DACT_ALLY_SPELLCASTER:
+    case DACT_ALLY_YRED_RELEASE_SOULS:
 #endif
     case NUM_DACTION_COUNTERS:
     case NUM_DACTIONS:

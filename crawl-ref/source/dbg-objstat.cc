@@ -30,6 +30,7 @@
 #include "libutil.h"
 #include "maps.h"
 #include "message.h"
+#include "mon-pick.h"
 #include "mon-util.h"
 #include "ng-init.h"
 #include "shopping.h"
@@ -37,6 +38,7 @@
 #include "state.h"
 #include "stepdown.h"
 #include "stringutil.h"
+#include "syscalls.h"
 #include "tag-version.h"
 #include "version.h"
 
@@ -45,7 +47,7 @@
 #define STAT_PRECISION 2
 
 const static char *stat_out_prefix = "objstat_";
-const static char *stat_out_ext = ".txt";
+const static char *stat_out_ext = ".tsv";
 static FILE *stat_outf;
 
 enum item_base_type
@@ -59,9 +61,11 @@ enum item_base_type
     ITEM_STAVES,
     ITEM_ARMOUR,
     ITEM_JEWELLERY,
+    ITEM_TALISMANS,
     ITEM_MISCELLANY,
     ITEM_SPELLBOOKS,
     ITEM_MANUALS,
+    ITEM_GEMS,
     NUM_ITEM_BASE_TYPES,
     ITEM_IGNORE = 100,
 };
@@ -134,6 +138,9 @@ static map<item_base_type, vector<string> > item_fields = {
         { "Num", "NumArte", "NumVault", "NumShop", "NumMons", "NumMin",
             "NumMax", "NumSD" },
     },
+    { ITEM_TALISMANS,
+        { "Num", "NumArte", "NumVault", "NumShop", "NumMin", "NumMax", "NumSD" },
+    },
     { ITEM_MISCELLANY,
         { "Num", "NumVault", "NumShop", "NumMin", "NumMax", "NumSD" },
     },
@@ -141,6 +148,9 @@ static map<item_base_type, vector<string> > item_fields = {
         { "Num", "NumVault", "NumShop", "NumMin", "NumMax", "NumSD" },
     },
     { ITEM_MANUALS,
+        { "Num", "NumVault", "NumShop", "NumMin", "NumMax", "NumSD" },
+    },
+    { ITEM_GEMS,
         { "Num", "NumVault", "NumShop", "NumMin", "NumMax", "NumSD" },
     },
 };
@@ -170,8 +180,9 @@ static set<monster_type> objstat_monsters;
 // Ex: monster_recs[level][mc]["Num"]
 static map<level_id, map<monster_type, map <string, int> > > monster_recs;
 static const vector<string> monster_fields = {
-    "Num", "NumVault", "NumMin", "NumMax", "NumSD", "MonsHD", "MonsHP",
-    "MonsXP", "TotalXP", "TotalXPVault"
+    "Num", "NumVault", "NumInBranch", "NumMin", "NumMax", "NumSD", "NumOOD",
+    "MonsHD", "MonsHP", "MonsXP", "TotalXP", "TotalXPVault",
+    "RelativeDepth", "DistanceOOD",
 };
 
 static set<dungeon_feature_type> objstat_features;
@@ -194,6 +205,9 @@ static item_base_type _item_base_type(const item_def &item)
     item_base_type type;
     switch (item.base_type)
     {
+    case OBJ_TALISMANS:
+        type = ITEM_TALISMANS;
+        break;
     case OBJ_MISCELLANY:
         type = ITEM_MISCELLANY;
         break;
@@ -229,6 +243,9 @@ static item_base_type _item_base_type(const item_def &item)
         break;
     case OBJ_JEWELLERY:
         type = ITEM_JEWELLERY;
+        break;
+    case OBJ_GEMS:
+        type = ITEM_GEMS;
         break;
     default:
         type = ITEM_IGNORE;
@@ -269,12 +286,18 @@ static object_class_type _item_orig_base_type(item_base_type base_type)
     case ITEM_JEWELLERY:
         type = OBJ_JEWELLERY;
         break;
+    case ITEM_TALISMANS:
+        type = OBJ_TALISMANS;
+        break;
     case ITEM_MISCELLANY:
         type = OBJ_MISCELLANY;
         break;
     case ITEM_MANUALS:
     case ITEM_SPELLBOOKS:
         type = OBJ_BOOKS;
+        break;
+    case ITEM_GEMS:
+        type = OBJ_GEMS;
         break;
     default:
         type = OBJ_UNASSIGNED;
@@ -285,52 +308,31 @@ static object_class_type _item_orig_base_type(item_base_type base_type)
 
 static string _item_class_name(item_base_type base_type)
 {
-    string name;
     switch (base_type)
     {
     case ITEM_WEAPONS:
-        name = "Weapons";
-        break;
+        return "Weapons";
     case ITEM_SPELLBOOKS:
-        name = "Spellbooks";
-        break;
+        return "Spellbooks";
     case ITEM_MANUALS:
-        name = "Manuals";
-        break;
+        return "Manuals";
     default:
-        name = item_class_name(_item_orig_base_type(base_type));
+        return item_class_name(_item_orig_base_type(base_type));
     }
-    return name;
 }
 
 static int _item_orig_sub_type(item_base_type base_type, int sub_type)
 {
-    int type;
-    switch (base_type)
-    {
-    case ITEM_MANUALS:
-        type = BOOK_MANUAL;
-        break;
-    default:
-        type = sub_type;
-        break;
-    }
-    return type;
+    if (base_type == ITEM_MANUALS)
+        return BOOK_MANUAL;
+    return sub_type;
 }
 
 static int _item_max_sub_type(item_base_type base_type)
 {
-    int num = 0;
-    switch (base_type)
-    {
-    case ITEM_MANUALS:
-        num = NUM_SKILLS;
-        break;
-    default:
-        num = get_max_subtype(_item_orig_base_type(base_type));
-        break;
-    }
-    return num;
+    if (base_type == ITEM_MANUALS)
+        return NUM_SKILLS;
+    return get_max_subtype(_item_orig_base_type(base_type));
 }
 
 static bool _item_tracks_artefact(item_base_type base_type)
@@ -341,6 +343,7 @@ static bool _item_tracks_artefact(item_base_type base_type)
     case ITEM_ARMOUR:
     case ITEM_JEWELLERY:
     case ITEM_SPELLBOOKS:
+    case ITEM_TALISMANS:
         return true;
     default:
         return false;
@@ -355,7 +358,6 @@ static bool _item_tracks_plus(item_base_type base_type)
     case ITEM_ARMOUR:
     case ITEM_JEWELLERY:
     case ITEM_WANDS:
-    case ITEM_MISCELLANY:
         return true;
     default:
         return false;
@@ -390,13 +392,7 @@ static bool _item_tracks_monster(item_base_type base_type)
 
 static bool _item_tracks_shop(item_base_type base_type)
 {
-    switch (base_type)
-    {
-    case ITEM_GOLD:
-        return false;
-    default:
-        return true;
-    }
+    return base_type != ITEM_GOLD;
 }
 
 static item_def _dummy_item(item_base_type base_type, int sub_type,
@@ -446,47 +442,34 @@ static string _brand_name(item_base_type base_type, int sub_type, int brand)
 
 static string _item_name(item_base_type base_type, int sub_type)
 {
-    string name = "";
-    description_level_type desc_type = DESC_DBNAME;
-
-    // These types need special handling, otherwise we use the original
-    // item_def name.
     if (sub_type == _item_max_sub_type(base_type))
-        name = "All " + _item_class_name(base_type);
-    else if (base_type == ITEM_SPELLBOOKS)
+        return "All " + _item_class_name(base_type);
+    if (base_type == ITEM_SPELLBOOKS)
     {
-        int orig_type = _item_orig_sub_type(base_type, sub_type);
+        const int orig_type = _item_orig_sub_type(base_type, sub_type);
         if (orig_type == BOOK_RANDART_LEVEL)
-            name = "Level Artefact Book";
-        else if (orig_type == BOOK_RANDART_LEVEL)
-            name = "Theme Artefact Book";
+            return "Level Artefact Book";
+        if (orig_type == BOOK_RANDART_LEVEL)
+            return "Theme Artefact Book";
     }
-    else if (base_type == ITEM_MANUALS)
-        desc_type = DESC_QUALNAME;
 
-    if (name.empty())
-    {
-        const item_def item = _dummy_item(base_type, sub_type);
-        name = item.name(desc_type, true, true);
-    }
-    return name;
+    const item_def item = _dummy_item(base_type, sub_type);
+    auto desc_type = DESC_DBNAME;
+    if (base_type == ITEM_MANUALS)
+        desc_type = DESC_QUALNAME;
+    return item.name(desc_type, true, true);
 }
 
 static string _level_name(const level_id &lev)
 {
-    string name;
     if (lev.branch == NUM_BRANCHES)
-        name = "AllLevels";
-    else if (lev.depth == -1 || brdepth[lev.branch] == 1)
-        name = lev.describe(false, false);
-    else if (brdepth[lev.branch] < 10)
-        name = lev.describe(false, true);
-    else
-    {
-        name = make_stringf("%s:%02d", lev.describe(false, false).c_str(),
-                            lev.depth);
-    }
-    return name;
+        return "AllLevels";
+    if (lev.depth == -1 || brdepth[lev.branch] == 1)
+        return lev.describe(false, false);
+    if (brdepth[lev.branch] < 10)
+        return lev.describe(false, true);
+    return make_stringf("%s:%02d", lev.describe(false, false).c_str(),
+                        lev.depth);
 }
 
 objstat_item::objstat_item(const item_def &item)
@@ -576,7 +559,7 @@ static void _init_spells()
     objstat_spells.insert(NUM_SPELLS);
 }
 
-// Initialize field data that needs non-default intialization (i.e. to
+// Initialize field data that needs non-default initialization (i.e. to
 // something other than zero). Handling this in one pass creates a lot of
 // potentially unused entries, but it's better than trying to guard against
 // default initialization everywhere. For the rest of the fields, it's fine to
@@ -785,7 +768,7 @@ void objstat_record_item(const item_def &item)
     const objstat_item objs_item(item);
 
     // Just in case, don't count mimics as items; these are converted
-    // explicitely in mg_do_build_level().
+    // explicitly in mg_do_build_level().
     if (item.flags & ISFLAG_MIMIC || objs_item.base_type == ITEM_IGNORE)
         return;
 
@@ -898,6 +881,22 @@ void objstat_record_monster(const monster *mons)
     {
         _record_monster_stat(type, "NumVault", 1);
         _record_monster_stat(type, "TotalXPVault", exper_value(*mons));
+    }
+
+    const level_id cur_lev = level_id::current();
+    const int avg_depth = monster_pop_depth_avg(cur_lev.branch, type);
+    if (avg_depth >= 0)
+    {
+        _record_monster_stat(type, "NumInBranch", 1);
+        // Relative depth from average placement. This doesn't directly provide
+        // OoD info,because you'd also need the ranges for that, but it gives
+        // a reasonably close guide. Higher values are more under depth.
+        // Don't record if monster is not a branch native.
+        _record_monster_stat(type, "RelativeDepth", cur_lev.depth - avg_depth);
+        const int ood = monster_how_ood(cur_lev.branch, cur_lev.depth, type);
+        _record_monster_stat(type, "DistanceOOD", ood);
+        if (ood > 0)
+            _record_monster_stat(type, "NumOOD", 1);
     }
 }
 
@@ -1027,7 +1026,7 @@ void objstat_iteration_stats()
 static FILE * _open_stat_file(string stat_file)
 {
     FILE *stat_fh = nullptr;
-    stat_fh = fopen(stat_file.c_str(), "w");
+    stat_fh = fopen_u(stat_file.c_str(), "w");
 
     if (!stat_fh)
     {
@@ -1083,7 +1082,9 @@ static void _write_stat(map<string, int> &stats, const string &field)
     ostringstream output;
     bool is_chance = false;
 
-    output.precision(STAT_PRECISION);
+    // NumOOD is by its nature reporting events rare enough that some more
+    // precision is helpful
+    output.precision(field == "NumOOD" ? STAT_PRECISION + 1 : STAT_PRECISION);
     output.setf(ios_base::fixed);
 
     // These fields want a per-instance average.
@@ -1091,9 +1092,24 @@ static void _write_stat(map<string, int> &stats, const string &field)
         || starts_with(field, "Chrg")
         || field == "MonsHD"
         || field == "MonsHP"
-        || field == "MonsXP")
+        || field == "MonsXP"
+        || field == "RelativeDepth"
+        || field == "DistanceOOD")
     {
-        out_val = field_val / stats["Num"];
+        string num_field = "Num";
+        // The classed fields need to be average relative to the right count.
+        if (ends_with(field, "Vault"))
+            num_field = "NumVault";
+        else if (ends_with(field, "Shop"))
+            num_field = "NumShop";
+        else if (ends_with(field, "Mons"))
+            num_field = "NumMons";
+        else if (field == "RelativeDepth" || field == "DistanceOOD")
+            num_field = "NumInBranch";
+        if (stats[num_field.c_str()] == 0)
+            out_val = 0.0; // XX some kind of `NA` value?
+        else
+            out_val = field_val / stats[num_field.c_str()];
     }
     // Turn the sum of squares into the standard deviation.
     else if (field == "NumSD")

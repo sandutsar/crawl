@@ -32,22 +32,10 @@
 
 static uint8_t _random_potion_description()
 {
-    int desc;
-
-    desc = random2(PDQ_NQUALS * PDC_NCOLOURS);
-
+    const int desc = random2(PDQ_NQUALS * PDC_NCOLOURS);
     if (coinflip())
-        desc %= PDC_NCOLOURS;
-
-    // nature and colour correspond to primary and secondary in
-    // item-name.cc.
-
-#if TAG_MAJOR_VERSION == 34
-    if (PCOLOUR(desc) == PDC_CLEAR) // only water can be clear, re-roll
-        return _random_potion_description();
-#endif
-
-    return desc;
+        return desc;
+    return desc % PDC_NCOLOURS;
 }
 
 // Determine starting depths of branches.
@@ -75,6 +63,9 @@ void initialise_branch_depths()
     }
 
     initialise_brentry();
+
+    if (crawl_state.game_is_descent())
+        brdepth[BRANCH_DUNGEON] = 12;
 }
 
 static void _use_overflow_temple(vector<god_type> temple_gods)
@@ -104,104 +95,59 @@ void initialise_temples()
 {
     //////////////////////////////////////////
     // First determine main temple map to use.
-    level_id ecumenical(BRANCH_TEMPLE, 1);
-
     map_def *main_temple = nullptr;
-    for (int i = 0; i < 10; i++)
-    {
-        int altar_count = 0;
+    int altar_count = 0;
 
+    if (crawl_state.game_is_descent())
+    {
         main_temple
-            = const_cast<map_def*>(random_map_for_place(ecumenical, false));
+            = const_cast<map_def*>(random_map_for_tag("temple_altars_0", false));
 
         if (main_temple == nullptr)
-            end(1, false, "No temples?!");
-
-        if (main_temple->has_tag("temple_variable"))
-        {
-            vector<int> sizes;
-            for (const auto &tag : main_temple->get_tags())
-            {
-                if (starts_with(tag, "temple_altars_"))
-                {
-                    sizes.push_back(
-                        atoi(tag_without_prefix(tag,
-                                                "temple_altars_").c_str()));
-                }
-            }
-            if (sizes.empty())
-            {
-                mprf(MSGCH_ERROR,
-                     "Temple %s set as variable but has no sizes.",
-                     main_temple->name.c_str());
-                main_temple = nullptr;
-                continue;
-            }
-            altar_count =
-                you.props[TEMPLE_SIZE_KEY].get_int() =
-                    sizes[random2(sizes.size())];
-        }
-
-        dgn_map_parameters mp(make_stringf("temple_altars_%d", altar_count));
-
-        // Without all this find_glyph() returns 0.
-        string err;
-        int tries = 2;
-        while (tries-- > 0)
-        {
-            try
-            {
-                main_temple->load();
-                break;
-            }
-            catch (map_load_exception &mload)
-            {
-                mprf(MSGCH_ERROR, "Failed to load map, reloading all maps (%s).",
-                     mload.what());
-                reread_maps();
-            }
-        }
-
-        main_temple->reinit();
-        err = main_temple->run_lua(true);
-
-        if (!err.empty())
-        {
-            mprf(MSGCH_ERROR, "Temple %s: %s", main_temple->name.c_str(),
-                 err.c_str());
-            main_temple = nullptr;
-            you.props.erase(TEMPLE_SIZE_KEY);
-            continue;
-        }
-
-        main_temple->fixup();
-        err = main_temple->resolve();
-
-        if (!err.empty())
-        {
-            mprf(MSGCH_ERROR, "Temple %s: %s", main_temple->name.c_str(),
-                 err.c_str());
-            main_temple = nullptr;
-            you.props.erase(TEMPLE_SIZE_KEY);
-            continue;
-        }
-        break;
+            end(1, false, "No temple of size 0");
     }
-
-    if (main_temple == nullptr)
-        end(1, false, "No valid temples.");
-
-    you.props[TEMPLE_MAP_KEY] = main_temple->name;
-
-    const vector<coord_def> altar_coords
-        = main_temple->find_glyph('B');
-    const unsigned int main_temple_size = altar_coords.size();
-
-    if (main_temple_size == 0)
+    else if (one_chance_in(100))
     {
-        end(1, false, "Main temple '%s' has no altars",
-            main_temple->name.c_str());
+        main_temple = const_cast<map_def*>(random_map_for_tag("temple_rare"));
+
+        if (main_temple == nullptr)
+            end(1, false, "No valid rare temples.");
+
+        for (const auto &tag : main_temple->get_tags())
+        {
+            if (starts_with(tag, "temple_altars_"))
+            {
+                altar_count =
+                    atoi(tag_without_prefix(tag,
+                                            "temple_altars_").c_str());
+            }
+        }
     }
+    else
+    {
+        // distribution of altar count has a mean at 13.5, with the extremes
+        // occurring approximately 2.5% of the time each (a much thicker tail
+        // than using 6 + random2avg(16,2)).
+        if (coinflip())
+            altar_count = max(6, 5 + random2max(9, 2));
+        else
+            altar_count = min(21, 14 + random2min(9, 2));
+
+        const string vault_tag = make_stringf("temple_altars_%d", altar_count);
+        do
+        {
+            main_temple
+                = const_cast<map_def*>(random_map_for_tag(vault_tag, false));
+
+            if (main_temple == nullptr)
+                end(1, false, "No temple of size %d", altar_count);
+
+        } while (main_temple->has_tag("temple_rare"));
+    }
+
+    you.props[TEMPLE_SIZE_KEY] = altar_count;
+    you.props[TEMPLE_MAP_KEY] = main_temple->name;
+    const unsigned int main_temple_size = altar_count;
 
 #ifdef DEBUG_TEMPLES
     mprf(MSGCH_DIAGNOSTICS, "Chose main temple %s, size %u",

@@ -19,10 +19,16 @@ enum skill_type
     SK_POLEARMS,
     SK_STAVES,
     SK_LAST_MELEE_WEAPON = SK_STAVES,
+#if TAG_MAJOR_VERSION == 34
     SK_SLINGS,
-    SK_BOWS,
+#endif
+    SK_RANGED_WEAPONS,
+#if TAG_MAJOR_VERSION == 34
     SK_CROSSBOWS,
     SK_LAST_WEAPON = SK_CROSSBOWS,
+#else
+    SK_LAST_WEAPON = SK_RANGED_WEAPONS,
+#endif
     SK_THROWING,
     SK_ARMOUR,
     SK_DODGING,
@@ -46,16 +52,19 @@ enum skill_type
     SK_SUMMONINGS,
     SK_NECROMANCY,
     SK_TRANSLOCATIONS,
+#if TAG_MAJOR_VERSION == 34
     SK_TRANSMUTATIONS,
+#endif
     SK_FIRE_MAGIC,
     SK_ICE_MAGIC,
     SK_AIR_MAGIC,
     SK_EARTH_MAGIC,
-    SK_POISON_MAGIC,
-    SK_LAST_MAGIC = SK_POISON_MAGIC,
+    SK_ALCHEMY,
+    SK_LAST_MAGIC = SK_ALCHEMY,
     SK_INVOCATIONS,
     SK_EVOCATIONS,
-    SK_LAST_SKILL = SK_EVOCATIONS,
+    SK_SHAPESHIFTING,
+    SK_LAST_SKILL = SK_SHAPESHIFTING,
     NUM_SKILLS,                        // must remain last regular member
 
     SK_BLANK_LINE,                     // used for skill output

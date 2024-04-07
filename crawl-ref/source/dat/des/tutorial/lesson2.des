@@ -96,10 +96,9 @@ COLOUR:  deABCDEF = lightblue
 FTILE:   deABCDEF = tutorial_pad
 MONS:    training dummy hp:2 ; stone q:10
 MONS:    rat always_corpse
-MONS:    worm
+MONS:    ribbon worm spells:none name:worm n_rpl
 ITEM:    boomerang mundane q:10
 ITEM:    shortbow mundane
-ITEM:    arrow mundane q:30
 MARKER:  d = lua:tutorial2.msg("boomerangs")
 MARKER:  A = lua:tutorial2.msg("throwing")
 MARKER:  B = lua:tutorial2.msg("resting_reminder")
@@ -160,7 +159,7 @@ xxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxx.xxxxxxxxxxxx
 xxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxx.xxxxxxxxxxxx
 xxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxCxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxx..xxxxxxxxxxxxx.xxxxxxxxxxxxx
-xxxxxxxxxxxxxxxxxxx..f.e..xxx...xxxxxxxxxxxxxx
+xxxxxxxxxxxxxxxxxxx....e..xxx...xxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxx...xxxxxxxxxxxxxxxxx
 xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ENDMAP

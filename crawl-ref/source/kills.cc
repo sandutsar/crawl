@@ -133,9 +133,12 @@ string KillMaster::kill_info() const
         if (catkills[i].empty())
             continue;
 
-        categories++;
         vector<kill_exp> kills;
         int count = catkills[i].get_kills(kills);
+        if (count == 0) // filtered out firewood
+            continue;
+
+        categories++;
         grandtotal += count;
 
         add_kill_info(killtext,
@@ -300,6 +303,8 @@ int Kills::get_kills(vector<kill_exp> &all_kills) const
     for (const auto &entry : kills)
     {
         const kill_monster_desc &md = entry.first;
+        if (mons_class_is_firewood(md.monnum))
+            continue;
         const kill_def &k = entry.second;
         all_kills.emplace_back(k, md);
         count += k.kills;
@@ -522,7 +527,8 @@ string kill_def::info(const kill_monster_desc &md) const
 string kill_def::append_places(const kill_monster_desc &md,
                                const string &name) const
 {
-    if (Options.dump_kill_places == KDO_NO_PLACES) return name;
+    if (Options.dump_kill_places == KDO_NO_PLACES)
+        return name;
 
     size_t nplaces = places.size();
     if (nplaces == 1 || mons_is_unique(md.monnum)
@@ -645,6 +651,7 @@ kill_monster_desc::kill_monster_desc(const monster* mon)
 #endif
             modifier = M_SIMULACRUM;
             break;
+        case MONS_BOUND_SOUL:
         case MONS_SPECTRAL_THING:
             modifier = M_SPECTRE;
             break;
@@ -682,6 +689,7 @@ kill_monster_desc::kill_monster_desc(const monster_info& mon)
 #endif
             modifier = M_SIMULACRUM;
             break;
+        case MONS_BOUND_SOUL:
         case MONS_SPECTRAL_THING:
             modifier = M_SPECTRE;
             break;

@@ -22,7 +22,8 @@ class monster;
 
 #define MONSTER_DIES_LUA_KEY "monster_dies_lua_key"
 
-#define ORC_CORPSE_KEY "orc_corpse"
+// Mid of the monster who left this corpse (used to identify apostle corpses)
+#define CORPSE_MID_KEY "corpse_mid"
 
 #define YOU_KILL(x) ((x) == KILL_YOU || (x) == KILL_YOU_MISSILE \
                      || (x) == KILL_YOU_CONF)
@@ -30,7 +31,6 @@ class monster;
 
 #define SAME_ATTITUDE(x) ((x)->friendly()       ? BEH_FRIENDLY :   \
                           (x)->good_neutral()   ? BEH_GOOD_NEUTRAL : \
-                          (x)->strict_neutral() ? BEH_STRICT_NEUTRAL :  \
                           (x)->neutral()        ? BEH_NEUTRAL           \
                                                 : BEH_HOSTILE)
 
@@ -46,7 +46,13 @@ item_def* monster_die(monster& mons, killer_type killer,
 item_def* mounted_kill(monster* daddy, monster_type mc, killer_type killer,
                        int killer_index);
 
+bool mons_will_goldify(const monster &mons);
+
+void handle_monster_dies_lua(monster& mons, killer_type killer);
+
 item_def* place_monster_corpse(const monster& mons, bool force = false);
+void maybe_drop_monster_organ(monster_type mon, monster_type orig,
+                              coord_def pos, bool silent = false);
 
 void monster_cleanup(monster* mons);
 void record_monster_defeat(const monster* mons, killer_type killer);
@@ -57,7 +63,7 @@ void heal_flayed_effect(actor* act, bool quiet = false, bool blood_only = false)
 void end_flayed_effect(monster* ghost);
 
 
-int exp_rate(int killer);
+bool damage_contributes_xp(const actor& agent);
 
 void mons_check_pool(monster* mons, const coord_def &oldpos,
                      killer_type killer = KILL_NONE, int killnum = -1);

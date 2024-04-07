@@ -19,6 +19,15 @@ crystal_spear5
 crystal_spear6
 crystal_spear7
 
+light_beam0 BOLT_LIGHT
+light_beam1
+light_beam2
+light_beam3
+light_beam4
+light_beam5
+light_beam6
+light_beam7
+
 iron_shot0 BOLT_IRON_SHOT
 iron_shot1
 iron_shot2
@@ -90,6 +99,8 @@ searing_ray4 BOLT_SEARING_RAY
 searing_ray5
 
 damnation BOLT_DAMNATION
+
+umbral_torchlight BOLT_UMBRAL_TORCHLIGHT
 
 irradiate0 BOLT_IRRADIATE
 irradiate1
@@ -196,9 +207,9 @@ cloud_acid2
 cloud_storm1 CLOUD_STORM
 cloud_storm2
 
-cloud_neg0 CLOUD_NEG
-cloud_neg1
-cloud_neg2
+cloud_misery0 CLOUD_MISERY
+cloud_misery1
+cloud_misery2
 
 cloud_gold_dust0 CLOUD_GOLD_DUST
 cloud_gold_dust1
@@ -210,7 +221,16 @@ cloud_flame_trail1
 cloud_flame_trail2
 cloud_flame_trail3
 
+cloud_electricity_trail0 CLOUD_ELECTRICITY
+cloud_electricity_trail1
+cloud_electricity_trail2
+cloud_electricity_trail3
+
 cloud_degeneration CLOUD_DEGENERATION
+
+cloud_blastmotes0 CLOUD_BLASTMOTES
+cloud_blastmotes1
+cloud_blastmotes2
 
 %sdir mon
 fungi_plants/ballistomycete_spore SPORE_OVERLAY

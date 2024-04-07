@@ -9,9 +9,7 @@ axes AXES_ON
 maces_flails MACES_FLAILS_ON
 polearms POLEARMS_ON
 staves STAVES_ON
-slings SLINGS_ON
-bows BOWS_ON
-crossbows CROSSBOWS_ON
+bows RANGED_WEAPONS_ON
 throwing THROWING_ON
 armour ARMOUR_ON
 dodging DODGING_ON
@@ -35,6 +33,7 @@ earth_magic EARTH_MAGIC_ON
 poison_magic POISON_MAGIC_ON
 invocations INVOCATIONS_ON
 evocations EVOCATIONS_ON
+shapeshifting SHAPESHIFTING_ON
 %sdir gui/skills/gods
 kikubaaqudgha NECROMANCY_K_ON
 tso INVOCATIONS_1_ON
@@ -64,9 +63,7 @@ axes AXES_FOCUS
 maces_flails MACES_FLAILS_FOCUS
 polearms POLEARMS_FOCUS
 staves STAVES_FOCUS
-slings SLINGS_FOCUS
-bows BOWS_FOCUS
-crossbows CROSSBOWS_FOCUS
+bows RANGED_WEAPONS_FOCUS
 throwing THROWING_FOCUS
 armour ARMOUR_FOCUS
 dodging DODGING_FOCUS
@@ -90,6 +87,7 @@ earth_magic EARTH_MAGIC_FOCUS
 poison_magic POISON_MAGIC_FOCUS
 invocations INVOCATIONS_FOCUS
 evocations EVOCATIONS_FOCUS
+shapeshifting SHAPESHIFTING_FOCUS
 %sdir gui/skills/gods
 kikubaaqudgha NECROMANCY_K_FOCUS
 tso INVOCATIONS_1_FOCUS
@@ -119,9 +117,7 @@ axes AXES_OFF
 maces_flails MACES_FLAILS_OFF
 polearms POLEARMS_OFF
 staves STAVES_OFF
-slings SLINGS_OFF
-bows BOWS_OFF
-crossbows CROSSBOWS_OFF
+bows ANGED_WEAPONS_OFF
 throwing THROWING_OFF
 armour ARMOUR_OFF
 dodging DODGING_OFF
@@ -145,6 +141,7 @@ earth_magic EARTH_MAGIC_OFF
 poison_magic POISON_MAGIC_OFF
 invocations INVOCATIONS_OFF
 evocations EVOCATIONS_OFF
+shapeshifting SHAPESHIFTING_OFF
 %sdir gui/skills/gods
 kikubaaqudgha NECROMANCY_K_OFF
 tso INVOCATIONS_1_OFF
@@ -174,9 +171,7 @@ axes AXES_INACTIVE
 maces_flails MACES_FLAILS_INACTIVE
 polearms POLEARMS_INACTIVE
 staves STAVES_INACTIVE
-slings SLINGS_INACTIVE
-bows BOWS_INACTIVE
-crossbows CROSSBOWS_INACTIVE
+bows RANGED_WEAPONS_INACTIVE
 throwing THROWING_INACTIVE
 armour ARMOUR_INACTIVE
 dodging DODGING_INACTIVE
@@ -200,6 +195,7 @@ earth_magic EARTH_MAGIC_INACTIVE
 poison_magic POISON_MAGIC_INACTIVE
 invocations INVOCATIONS_INACTIVE
 evocations EVOCATIONS_INACTIVE
+shapeshifting SHAPESHIFTING_INACTIVE
 %sdir gui/skills/gods
 kikubaaqudgha NECROMANCY_K_INACTIVE
 tso INVOCATIONS_1_INACTIVE
@@ -229,9 +225,7 @@ axes AXES_MAX
 maces_flails MACES_FLAILS_MAX
 polearms POLEARMS_MAX
 staves STAVES_MAX
-slings SLINGS_MAX
-bows BOWS_MAX
-crossbows CROSSBOWS_MAX
+bows RANGED_WEAPONS_MAX
 throwing THROWING_MAX
 armour ARMOUR_MAX
 dodging DODGING_MAX
@@ -255,6 +249,7 @@ earth_magic EARTH_MAGIC_MAX
 poison_magic POISON_MAGIC_MAX
 invocations INVOCATIONS_MAX
 evocations EVOCATIONS_MAX
+shapeshifting SHAPESHIFTING_MAX
 %sdir gui/skills/gods
 kikubaaqudgha NECROMANCY_K_MAX
 tso INVOCATIONS_1_MAX

@@ -30,9 +30,11 @@
 #include "mon-tentacle.h"
 #include "newgame-def.h"
 #include "ng-init.h"
+#include "prompt.h"
 #include "spl-miscast.h"
 #include "state.h"
 #include "stringutil.h"
+#include "syscalls.h"
 #include "teleport.h"
 #include "terrain.h"
 #ifdef USE_TILE
@@ -117,44 +119,6 @@ namespace msg
 }
 
 extern void world_reacts();
-
-static void _results_popup(string msg, bool error=false)
-{
-    // TODO: shared code here with end.cc
-    linebreak_string(msg, 79);
-
-#ifdef USE_TILE_WEB
-    tiles_crt_popup show_as_popup;
-    tiles.set_ui_state(UI_CRT);
-#endif
-
-    if (error)
-    {
-        msg = string("Arena error:\n\n<lightred>")
-                       + replace_all(msg, "<", "<<");
-        msg += "</lightred>";
-    }
-    else
-        msg = string("Arena results:\n\n") + msg;
-
-    msg += "\n\n<cyan>Hit any key to continue, "
-                 "ctrl-p for the full log.</cyan>";
-
-    auto prompt_ui = make_shared<Text>(
-            formatted_string::parse_string(msg));
-    bool done = false;
-    prompt_ui->on_hotkey_event([&](const KeyEvent& ev) {
-        if (ev.key() == CONTROL('P'))
-            replay_messages();
-        else
-            done = true;
-        return done;
-    });
-
-    mouse_control mc(MOUSE_MODE_MORE);
-    auto popup = make_shared<ui::Popup>(prompt_ui);
-    ui::run_layout(move(popup), done);
-}
 
 namespace arena
 {
@@ -758,8 +722,10 @@ namespace arena
 
     static void handle_keypress(int ch)
     {
-        if (key_is_escape(ch) || toalower(ch) == 'q')
+        if (key_is_escape(ch) || toalower(ch) == 'q' || ch == CK_MOUSE_CMD)
         {
+            // XX with some timings, this results in a delay on a blank screen
+            // -- not sure why
             contest_cancelled = true;
             return;
         }
@@ -871,6 +837,9 @@ namespace arena
                 mprf("---- Turn #%d ----", turns);
 #endif
 
+                if (crawl_state.terminal_resized)
+                    show_fight_banner();
+
                 // Check the consistency of our book-keeping every 100 turns.
                 if ((turns++ % 100) == 0)
                     count_foes();
@@ -882,18 +851,21 @@ namespace arena
                 do_respawn(faction_a);
                 do_respawn(faction_b);
                 balance_spawners();
-                ui::delay(Options.view_delay);
+                if (!contest_cancelled)
+                    ui::delay(Options.view_delay);
                 clear_messages();
                 ASSERT(you.pet_target == MHITNOT);
             }
-            viewwindow();
-            update_screen();
+            if (!contest_cancelled)
+            {
+                viewwindow();
+                update_screen();
+            }
         }
 
         if (contest_cancelled)
         {
-            mpr("Cancelled contest at user request");
-            ui::delay(Options.view_delay);
+            mpr("Cancelling contest at user request");
             clear_messages();
             return;
         }
@@ -1049,8 +1021,7 @@ namespace arena
             };
             virtual void _render() override {};
             virtual void _allocate_region() override {
-                show_fight_banner();
-                viewwindow();
+                // XX sometimes this gets called spuriously?
                 update_screen();
                 display_message_window();
             };
@@ -1081,23 +1052,34 @@ namespace arena
             }
             do_fight();
 
-            if (trials_done < total_trials)
+            if (!contest_cancelled && trials_done < total_trials)
                 ui::delay(Options.view_delay * 5);
         }
         while (!contest_cancelled && trials_done < total_trials);
 
-        ui::delay(Options.view_delay * 5);
+        // why extra delay?
+        if (!contest_cancelled)
+            ui::delay(Options.view_delay * 5);
 
-        if (total_trials > 0)
+        if (trials_done > 0)
         {
             string outcome = make_stringf(
                 "Final score: %s (%d); %s (%d) [%d ties]",
                  faction_a.desc.c_str(), team_a_wins,
                  faction_b.desc.c_str(), trials_done - team_a_wins - ties,
                  ties);
-            mpr(outcome);
+            if (contest_cancelled)
+            {
+                outcome += make_stringf("\n(Cancelled after %d trial%s)",
+                    trials_done, trials_done > 1 ? "s" : "");
+            }
+
+            mpr("---- Contest finished ----\n" + outcome);
             if (!skipped_arena_ui)
-                _results_popup(outcome);
+            {
+                ui::message(outcome, "Arena results:",
+                    "<cyan>Hit any key to continue, ctrl-p for the full log.</cyan>");
+            }
         }
 
         ui::pop_layout();
@@ -1486,8 +1468,9 @@ static void _choose_arena_teams(newgame_def& choice,
     arena::skipped_arena_ui = false;
     clear_message_store();
 
+    auto text = make_shared<Text>("Enter your choice of teams:\n ");
     auto vbox = make_shared<Box>(ui::Widget::VERT);
-    vbox->add_child(make_shared<Text>("Enter your choice of teams:\n "));
+    vbox->add_child(text);
     vbox->set_cross_alignment(Widget::Align::STRETCH);
     auto teams_input = make_shared<ui::TextEntry>();
     teams_input->set_sync_id("teams");
@@ -1498,19 +1481,20 @@ static void _choose_arena_teams(newgame_def& choice,
     prompt.cprintf("  Sigmund v Jessica\n");
     prompt.cprintf("  99 orc v the Royal Jelly\n");
     prompt.cprintf("  20-headed hydra v 10 kobold ; scimitar ego:flaming");
-    vbox->add_child(make_shared<Text>(move(prompt)));
+    vbox->add_child(make_shared<Text>(std::move(prompt)));
 
-    auto popup = make_shared<ui::Popup>(move(vbox));
+    auto popup = make_shared<ui::Popup>(std::move(vbox));
 
     bool done = false, cancel = false;
     popup->on_hotkey_event([&](const KeyEvent& ev) {
         return done = (ev.key() == CK_ENTER);
     });
     popup->on_keydown_event([&](const KeyEvent& ev) {
-        return done = cancel = key_is_escape(ev.key());
+        done = cancel = key_is_escape(ev.key()) || ev.key() == CK_MOUSE_CMD;
+        return done;
     });
 
-    ui::run_layout(move(popup), done, teams_input);
+    ui::run_layout(std::move(popup), done, teams_input);
 
     if (cancel || crawl_state.seen_hups)
     {
@@ -1533,7 +1517,7 @@ NORETURN void run_arena(const newgame_def& choice, const string &default_arena_t
         end(0, false, "Results file already open");
     // would be more elegant if arena_tee handled file open/close, but
     // that would need a bunch of refactoring of how the file is handled here.
-    arena::file = fopen("arena.result", "w");
+    arena::file = fopen_u("arena.result", "w");
     msg::arena_tee log(&arena::file);
 
     do
@@ -1565,8 +1549,7 @@ NORETURN void run_arena(const newgame_def& choice, const string &default_arena_t
             }
             else
             {
-                mprf(MSGCH_ERROR, "%s", error.what());
-                _results_popup(error.what(), true);
+                ui::error(error.what());
                 last_teams = arena_choice.arena_teams;
                 arena_choice.arena_teams = "";
                 // fallthrough

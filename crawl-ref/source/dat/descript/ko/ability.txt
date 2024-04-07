@@ -172,26 +172,16 @@ Torment ability
 키쿠바쿠드하는 이 고통으로부터 당신을 보호해줄 때도 있다. ...안 해줄 때도
 있지만.
 %%%%
-Animate Remains ability
-
-주변의 시체나 해골 하나를 일으켜 당신의 언데드 수하로 만든다. 이 권능으로
-되살아난 좀비와 해골은 다른 층으로 이동할 수 없다.
-%%%%
-Recall Undead Slaves ability
+Recall Undead Harvest ability
 
 당신의 오크 추종자들을 주변으로 불러온다. 추종자가 어디에 있어도 (즉, 같은 층에
 있지 않아도)  불러오는 것이 가능하다.
-%%%%
-Animate Dead ability
-
-주변의 모든 시체와 해골들을 일으켜 당신의 언데드 수하로 만든다. 이 권능으로
-되살아난 좀비와 해골은 다른 층으로 이동할 수 없다.
 %%%%
 Drain Life ability
 
 주변에 있는 모든 적들의 생명력을 흡수하여, 당신의 것으로 만든다.
 %%%%
-Enslave Soul ability
+Bind Soul ability
 
 살아있는 지성체의 영혼에 각인을 새긴다. 각인을 새긴 적이 죽으면, 그 영혼을
 가져올 수 있다.
@@ -202,10 +192,6 @@ Enslave Soul ability
 순간만을 기다린다.
 
 지배당한 영혼은 당신을 따르기 위해 그들이 만들어진 층을 벗어날 수 있다.
-%%%%
-Animate Remains or Dead ability
-
-버그를 발견하셨습니다! 친구들에게 이 사실을 자랑하세요.
 %%%%
 Heroism ability
 
@@ -434,10 +420,6 @@ Remove Curse ability
 
 현재 입고있는 장비에 걸린 모든 저주를 해제한다.
 %%%%
-Make burning bush ability
-
-해당 지역에 투명한 적들을 볼 수 있으며 불을 뿜는, 화염의 식물을 심는다.
-%%%%
 Make altar ability
 
 당신이 서있는 곳에, 선택한 신의 제단을 만든다.
@@ -617,11 +599,6 @@ Elemental Force ability
 주변의 원소구름을 합쳐 정령으로 부린다. 자신이 만든 구름은 아군 정령으로
 적대적인 구름은 적군 정령으로, 중립구름은 중립정령이 된다.
 %%%%
-Give Item to Named Follower ability
-
-1개의 무기 혹은 1개의 방어구를 이름있는 오크 추종자에게 하사한다.
-오크는 이런 선물을 딱 하나만 받을 수 있다.
-%%%%
 Greater Servant of Makhleb ability
 
 대악마를 소환한다. 이 능력을 정확히 이용하지 못하면 악마는 적의를 갖고
@@ -645,11 +622,6 @@ Heal Other ability
 교화가 성공하건 실패하건 사용된 만복도 신앙도 마력은 회복되지 않습니다.
 만약 교화에 성공했다면, 그 몬스터는 회복되고 그 몬스터의 경험치의 반을 얻습니다.
 그렇지 않다면, 아무 일도 일어나지 않고 당신은 아무것도 얻을 수 없습니다.
-%%%%
-Injury Mirror ability
-
-짧은 시간동안 받는 피해를 반사하고 어떤 피해를 입든 공격자에게 피해를 줍니다.
-줄어드는 신앙심은 받는 피해량에 따라 다릅니다.
 %%%%
 Jelly Paralyse ability
 

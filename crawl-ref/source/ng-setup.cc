@@ -30,6 +30,7 @@
 #include "state.h"
 #include "tag-version.h"
 #include "throw.h"
+#include "transform.h"
 
 #define MIN_START_STAT       3
 
@@ -136,7 +137,7 @@ item_def* newgame_make_item(object_class_type base,
     // If the character is restricted in wearing the requested armour,
     // hand out a replacement instead.
     if (item.base_type == OBJ_ARMOUR
-        && !can_wear_armour(item, false, false))
+        && !can_wear_armour(item, false, true))
     {
         if (item.sub_type == ARM_HELMET || item.sub_type == ARM_HAT)
             item.sub_type = ARM_HAT;
@@ -152,13 +153,14 @@ item_def* newgame_make_item(object_class_type base,
     ASSERT(item.quantity == 1 || is_stackable_item(item));
 
     // If that didn't help, nothing will.
-    // However, wanderer randbooks aren't yet initialized and all other
-    // starting books are guaranteed to be useful at game start.
-    if (item.base_type != OBJ_BOOKS && is_useless_item(item, false, true))
+    if (is_useless_item(item, false, true))
     {
         item = item_def();
         return nullptr;
     }
+
+    // Make sure branded and/or enchanted items appear as such.
+    item_set_appearance(item);
 
     if ((item.base_type == OBJ_WEAPONS && can_wield(&item, false, false)
         || item.base_type == OBJ_ARMOUR && can_wear_armour(item, false, false))
@@ -166,64 +168,34 @@ item_def* newgame_make_item(object_class_type base,
     {
         you.equip[get_item_slot(item)] = slot;
     }
+    else if (item.base_type == OBJ_WEAPONS
+             && you.species == SP_COGLIN
+             && you.hands_reqd(item) == HANDS_ONE
+             && you.equip[EQ_OFFHAND] == -1
+             && you.weapon() // should always be true here
+             && you.hands_reqd(*you.weapon()) == HANDS_ONE)
+    {
+        you.equip[EQ_OFFHAND] = slot;
+    }
 
     if (item.base_type == OBJ_MISSILES)
         _autopickup_ammo(static_cast<missile_type>(item.sub_type));
-    // You can get the books without the corresponding items as a wanderer.
-    else if (item.base_type == OBJ_BOOKS && item.sub_type == BOOK_GEOMANCY)
-        _autopickup_ammo(MI_STONE);
-    // You probably want to pick up both.
-    if (item.is_type(OBJ_MISSILES, MI_SLING_BULLET))
-        _autopickup_ammo(MI_STONE);
 
     origin_set_startequip(item);
+    if (item.base_type == OBJ_WEAPONS && you.species == SP_COGLIN)
+        name_weapon(item);
 
     return &item;
 }
 
-static void _give_ranged_weapon(weapon_type weapon, int plus)
+static void _give_throwing_ammo()
 {
-    ASSERT(weapon != NUM_WEAPONS);
-
-    switch (weapon)
-    {
-    case WPN_SHORTBOW:
-    case WPN_HAND_CROSSBOW:
-    case WPN_HUNTING_SLING:
-        newgame_make_item(OBJ_WEAPONS, weapon, 1, plus);
-        break;
-    default:
-        break;
-    }
-}
-
-static void _give_ammo(weapon_type weapon, int plus)
-{
-    ASSERT(weapon != NUM_WEAPONS);
-
-    switch (weapon)
-    {
-    case WPN_THROWN:
-        if (species::can_throw_large_rocks(you.species))
-            newgame_make_item(OBJ_MISSILES, MI_LARGE_ROCK, 4 + plus);
-        else if (you.body_size(PSIZE_TORSO) <= SIZE_SMALL)
-            newgame_make_item(OBJ_MISSILES, MI_BOOMERANG, 8 + 2 * plus);
-        else
-            newgame_make_item(OBJ_MISSILES, MI_JAVELIN, 5 + plus);
-        newgame_make_item(OBJ_MISSILES, MI_THROWING_NET, 2);
-        break;
-    case WPN_SHORTBOW:
-        newgame_make_item(OBJ_MISSILES, MI_ARROW, 20);
-        break;
-    case WPN_HAND_CROSSBOW:
-        newgame_make_item(OBJ_MISSILES, MI_BOLT, 20);
-        break;
-    case WPN_HUNTING_SLING:
-        newgame_make_item(OBJ_MISSILES, MI_SLING_BULLET, 20);
-        break;
-    default:
-        break;
-    }
+    if (species::can_throw_large_rocks(you.species))
+        newgame_make_item(OBJ_MISSILES, MI_LARGE_ROCK, 1);
+    else if (you.body_size(PSIZE_TORSO) <= SIZE_SMALL)
+        newgame_make_item(OBJ_MISSILES, MI_BOOMERANG, 2);
+    else
+        newgame_make_item(OBJ_MISSILES, MI_JAVELIN, 1);
 }
 
 static void _give_job_spells(job_type job)
@@ -235,14 +207,12 @@ static void _give_job_spells(job_type job)
     if (you.has_mutation(MUT_INNATE_CASTER))
     {
         for (spell_type s : spells)
-        {
-            if (you.spell_no < MAX_DJINN_SPELLS)
+            if (you.spell_no < MAX_DJINN_SPELLS && !spell_is_useless(s, false))
                 add_spell_to_memory(s);
-        }
         return;
     }
 
-    library_add_spells(spells);
+    library_add_spells(spells, true);
 
     const spell_type first_spell = spells[0];
     if (!spell_is_useless(first_spell, false, true)
@@ -252,18 +222,18 @@ static void _give_job_spells(job_type job)
     }
 }
 
-static void _cleanup_innate_magic_skills()
+static void _give_offhand_weapon()
 {
-    // could use a reference here, but seems surprising to the reader
-    int spcasting = you.skills[SK_SPELLCASTING];
-    for (skill_type sk = SK_FIRST_MAGIC_SCHOOL; sk <= SK_LAST_MAGIC; sk++)
+    const item_def *wpn = you.weapon();
+    if (!wpn || you.shield() || you.hands_reqd(*wpn) != HANDS_ONE)
+        return;
+    if (is_range_weapon(*wpn))
     {
-        const int lvl = you.skills[sk];
-        if (lvl > spcasting)
-            spcasting = lvl;
-        you.skills[sk] = 0;
+        const int plus = you.char_class == JOB_HUNTER ? 0 : -2;
+        newgame_make_item(OBJ_WEAPONS, WPN_SLING, 1, plus);
     }
-    you.skills[SK_SPELLCASTING] = spcasting;
+    else
+        newgame_make_item(OBJ_WEAPONS, WPN_DAGGER);
 }
 
 void give_items_skills(const newgame_def& ng)
@@ -276,7 +246,7 @@ void give_items_skills(const newgame_def& ng)
         you.religion = GOD_TROG;
         you.piety = 35;
 
-        if (you_can_wear(EQ_BODY_ARMOUR))
+        if (you_can_wear(EQ_BODY_ARMOUR) != false)
             you.skills[SK_ARMOUR] += 2;
         else
         {
@@ -308,18 +278,6 @@ void give_items_skills(const newgame_def& ng)
             you.skills[SK_ARMOUR]++;
         break;
     }
-    case JOB_ABYSSAL_KNIGHT:
-        you.religion = GOD_LUGONU;
-        if (!crawl_state.game_is_sprint())
-            you.chapter = CHAPTER_POCKET_ABYSS;
-        you.piety = 38;
-
-        if (species_apt(SK_ARMOUR) < species_apt(SK_DODGING))
-            you.skills[SK_DODGING]++;
-        else
-            you.skills[SK_ARMOUR]++;
-
-        break;
 
     case JOB_CINDER_ACOLYTE:
         you.religion = GOD_IGNIS;
@@ -330,32 +288,36 @@ void give_items_skills(const newgame_def& ng)
         break;
     }
 
-    if (you.char_class == JOB_ABYSSAL_KNIGHT)
-        newgame_make_item(OBJ_WEAPONS, ng.weapon, 1, +1);
-    else if (you.char_class == JOB_CHAOS_KNIGHT)
+    if (you.char_class == JOB_CHAOS_KNIGHT)
         newgame_make_item(OBJ_WEAPONS, ng.weapon, 1, 0, SPWPN_CHAOS);
     else if (you.char_class == JOB_CINDER_ACOLYTE)
         newgame_make_item(OBJ_WEAPONS, ng.weapon, 1, -1, SPWPN_FLAMING);
-    else if (job_gets_ranged_weapons(you.char_class))
-        _give_ranged_weapon(ng.weapon, you.char_class == JOB_HUNTER ? 1 : 0);
     else if (job_has_weapon_choice(you.char_class))
         newgame_make_item(OBJ_WEAPONS, ng.weapon);
 
     give_job_equipment(you.char_class);
     give_job_skills(you.char_class);
     _give_job_spells(you.char_class);
+    if (you.char_class == JOB_GLADIATOR)
+        _give_throwing_ammo();
 
-    if (job_gets_ranged_weapons(you.char_class))
-        _give_ammo(ng.weapon, you.char_class == JOB_HUNTER ? 1 : 0);
-
-    if (you.has_mutation(MUT_NO_GRASPING))
+    if (you.has_mutation(MUT_NO_GRASPING)) // i.e. felids
         you.skills[SK_THROWING] = 0;
 
-    if (you.has_mutation(MUT_NO_ARMOUR))
-        you.skills[SK_SHIELDS] = 0;
+    if (you.has_mutation(MUT_NO_ARMOUR)) // i.e. felids
+        you.skills[SK_SHIELDS] = 0; // i.e. FeFi
 
-    if (you.has_mutation(MUT_INNATE_CASTER))
-        _cleanup_innate_magic_skills();
+    if (you.has_mutation(MUT_WIELD_OFFHAND))
+    {
+        // Coglins would rather have two slings than one bow.
+        if (you.char_class == JOB_HUNTER)
+        {
+            item_def *wpn = you.weapon();
+            wpn->sub_type = WPN_SLING;
+            wpn->plus = 2;
+        }
+        _give_offhand_weapon();
+    }
 
     if (!you_worship(GOD_NO_GOD))
     {
@@ -391,6 +353,7 @@ static void _setup_tutorial_miscs()
 static void _give_basic_knowledge()
 {
     identify_inventory();
+    mark_inventory_sets_unknown();
 
     // Removed item types are handled in _set_removed_types_as_identified.
 }
@@ -426,6 +389,7 @@ void setup_game(const newgame_def& ng,
     switch (crawl_state.type)
     {
     case GAME_TYPE_NORMAL:
+    case GAME_TYPE_DESCENT:
     case GAME_TYPE_CUSTOM_SEED:
     case GAME_TYPE_TUTORIAL:
     case GAME_TYPE_SPRINT:
@@ -440,19 +404,6 @@ void setup_game(const newgame_def& ng,
     }
 
     _setup_generic(ng, normal_dungeon_setup);
-}
-
-static void _free_up_slot(char letter)
-{
-    for (int slot = 0; slot < ENDOFPACK; ++slot)
-    {
-        if (!you.inv[slot].defined())
-        {
-            swap_inv_slots(letter_to_index(letter),
-                           slot, false);
-            break;
-        }
-    }
 }
 
 static bool _spell_triggered_by(spell_type to_trigger, spell_type trigger)
@@ -543,13 +494,18 @@ static void _setup_generic(const newgame_def& ng,
     rng::reset(); // initialize rng from Options.seed
     _init_player();
     you.game_seed = crawl_state.seed;
-    you.deterministic_levelgen = Options.incremental_pregen;
+    you.deterministic_levelgen =
+                            Options.pregen_dungeon != level_gen_type::classic;
 
 #if TAG_MAJOR_VERSION == 34
     // Avoid the remove_dead_shops() Gozag fixup in new games: see
     // ShoppingList::item_type_identified().
     you.props[REMOVED_DEAD_SHOPS_KEY] = true;
 #endif
+
+    // Needs to happen before we give the player items, so that item specs
+    // in job descriptions can be parsed safely.
+    initialise_item_sets();
 
     // Needs to happen before we give the player items, so that it's safe to
     // check whether those items need to be removed from their shopping list.
@@ -577,16 +533,11 @@ static void _setup_generic(const newgame_def& ng,
     give_items_skills(ng);
 
     roll_demonspawn_mutations();
+    if (you.has_mutation(MUT_MULTILIVED))
+        you.lives = 1;
 
     if (crawl_state.game_is_sprint())
         _give_bonus_items();
-
-    // Leave the a/b slots open so if the first thing you pick up is a weapon,
-    // you can use ' to swap between your items.
-    if (you.char_class == JOB_EARTH_ELEMENTALIST)
-        _free_up_slot('a');
-    if (you.char_class == JOB_ARCANE_MARKSMAN && ng.weapon != WPN_THROWN)
-        _free_up_slot('b');
 
     // Give tutorial skills etc
     if (crawl_state.game_is_tutorial())
@@ -625,6 +576,22 @@ static void _setup_generic(const newgame_def& ng,
             item.props["adjusted"] = true;
             auto_assign_item_slot(item);
         }
+    }
+
+    if (you.char_class == JOB_SHAPESHIFTER)
+    {
+        const item_def* talisman = nullptr;
+        for (auto& item : you.inv)
+        {
+            if (item.is_type(OBJ_TALISMANS, TALISMAN_BEAST))
+            {
+                talisman = &item;
+                break;
+            }
+        }
+        ASSERT(talisman);
+        set_default_form(transformation::beast, talisman);
+        set_form(transformation::beast, 1); // hacky...
     }
 
     reassess_starting_skills();
@@ -666,6 +633,10 @@ static void _setup_generic(const newgame_def& ng,
 
     // pregen temple -- it's quick and easy, and this prevents a popup from
     // happening. This needs to happen after you.save is created.
-    if (normal_dungeon_setup && !pregen_dungeon(level_id(BRANCH_TEMPLE, 1)))
+    if (normal_dungeon_setup && you.deterministic_levelgen &&
+        !crawl_state.game_is_descent() && // disables temple
+        !pregen_dungeon(level_id(BRANCH_TEMPLE, 1)))
+    {
         die("Builder failure while trying to generate temple!");
+    }
 }

@@ -27,6 +27,9 @@ zombie_hydra2
 zombie_hydra3
 zombie_hydra4
 zombie_hydra5
+zombie_dream_sheep MONS_ZOMBIE_DREAM_SHEEP
+zombie_skyshark MONS_ZOMBIE_SKYSHARK
+zombie_snail MONS_ZOMBIE_SNAIL
 %rim 1
 zombie_kraken_head MONS_ZOMBIE_KRAKEN
 zombie_drake MONS_ZOMBIE_DRAKE
@@ -36,16 +39,8 @@ zombie_quadruped_winged MONS_ZOMBIE_QUADRUPED_WINGED
 zombie_harpy MONS_ZOMBIE_HARPY
 zombie_octopode MONS_ZOMBIE_OCTOPODE
 zombie_juggernaut MONS_ZOMBIE_JUGGERNAUT
-zombie_lernaean_hydra01 MONS_LERNAEAN_HYDRA_ZOMBIE
-zombie_lernaean_hydra02
-zombie_lernaean_hydra03
-zombie_lernaean_hydra04
-zombie_lernaean_hydra05
-zombie_lernaean_hydra06
-zombie_lernaean_hydra07
-zombie_lernaean_hydra08
-zombie_lernaean_hydra09
-zombie_lernaean_hydra10
+# Note: MONS_LERNAEAN_HYDRA_ZOMBIE is handled in dc-mon.txt in a (possibly
+# futile) attempt to be more efficient by packing large monsters together
 zombie_elf MONS_ZOMBIE_ELF
 zombie_fawn MONS_ZOMBIE_FAUN
 zombie_guardian_serpent MONS_ZOMBIE_GUARDIAN_SERPENT
@@ -83,6 +78,9 @@ zombie_golden_dragon MONS_ZOMBIE_GOLDEN_DRAGON
 zombie_iron_dragon MONS_ZOMBIE_IRON_DRAGON
 zombie_yak MONS_ZOMBIE_YAK
 zombie_bear MONS_ZOMBIE_BEAR
+zombie_jelly MONS_ZOMBIE_JELLY
+zombie_orb MONS_ZOMBIE_ORB
+zombie_x MONS_ZOMBIE_X
 
 %sdir mon/undead/skeletons
 ## Skeletons
@@ -93,6 +91,7 @@ skeleton_quadruped_small MONS_SKELETON_QUADRUPED_SMALL
 skeleton_quadruped_large MONS_SKELETON_QUADRUPED_LARGE
 skeleton_quadruped_winged MONS_SKELETON_QUADRUPED_WINGED
 skeleton_troll MONS_SKELETON_TROLL
+skeleton_juggernaut MONS_SKELETON_JUGGERNAUT
 skeleton_frog MONS_SKELETON_FROG
 skeleton_lizard MONS_SKELETON_LIZARD
 skeleton_turtle MONS_SKELETON_TURTLE
@@ -121,12 +120,16 @@ simulacrum_quadruped_large MONS_SIMULACRUM_QUADRUPED_LARGE
 simulacrum_bat MONS_SIMULACRUM_BAT
 simulacrum_bee MONS_SIMULACRUM_BEE
 simulacrum_ant MONS_SIMULACRUM_BUG
+simulacrum_shrike MONS_SIMULACRUM_SHRIKE
 simulacrum_fish MONS_SIMULACRUM_FISH
 simulacrum_centaur MONS_SIMULACRUM_CENTAUR
 simulacrum_naga MONS_SIMULACRUM_NAGA
 simulacrum_snake MONS_SIMULACRUM_SNAKE
 simulacrum_lizard MONS_SIMULACRUM_LIZARD
 simulacrum_spider MONS_SIMULACRUM_SPIDER
+simulacrum_slime MONS_SIMULACRUM_SLIME
+simulacrum_eye MONS_SIMULACRUM_EYE
+simulacrum_x MONS_SIMULACRUM_X
 simulacrum_dragon MONS_SIMULACRUM_DRAGON
 simulacrum_kraken MONS_SIMULACRUM_KRAKEN
 simulacrum_drake MONS_SIMULACRUM_DRAKE
@@ -136,7 +139,11 @@ simulacrum_hydra3
 simulacrum_hydra4
 simulacrum_hydra5
 
-## Spectral things
+## Spectral things (and yred souls)
+%sdir mon/undead/bound_souls
+bound_humanoid MONS_BOUND_HUMANOID
+bound_animal MONS_BOUND_ANIMAL
+bound_strange MONS_BOUND_STRANGE
 %sdir mon/undead/spectrals
 spectral_small MONS_SPECTRAL_SMALL
 spectral_large MONS_SPECTRAL_LARGE
@@ -161,3 +168,7 @@ spectral_hydra3
 spectral_hydra4
 spectral_hydra5
 %rim 1
+
+fallen_orc_warrior MONS_FALLEN_ORC_WARRIOR
+fallen_orc_knight MONS_FALLEN_ORC_KNIGHT
+fallen_orc_warlord MONS_FALLEN_ORC_WARLORD

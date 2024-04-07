@@ -18,7 +18,7 @@
 -- parameters, can be used to achieve different effects.
 --
 -- Fog machines can be "chained" together (activated at the same time) by using
--- the convenience function "chained_fog_machine" with the normal paramaters
+-- the convenience function "chained_fog_machine" with the normal parameters
 -- which are accepted by "fog_machine".
 --
 -- Marker parameters:
@@ -33,7 +33,7 @@
 -- pow_max: The maximum power of each cloud; must be provided.
 -- pow_rolls: The number of rolls of [pow_min, pow_max], with the average
 --     value uses; increasing the values makes the average value more likely
---     and extreme values less likely. Defaults to 1.
+--     and extreme values less likely. Defaults to 3.
 -- delay, delay_min and delay_max: The delay between laying down one cloud
 --     and the next.  10 is equal to normal-speed player turn. Either
 --     delay or delay_max and delay_min must be provided. Providing just
@@ -176,7 +176,7 @@ end
 
 function FogMachine:do_trigger(triggerer, marker, ev)
   -- Override do_trigger for things that we want to do only once if
-  -- there's multiple markers slaved to this one.
+  -- there's multiple replica markers to this one.
   if triggerer.type == "turn" then
     self.buildup_turns = self.buildup_turns + ev:ticks()
 
@@ -200,7 +200,7 @@ function FogMachine:do_trigger(triggerer, marker, ev)
     triggerer.listener_only = false
   end
 
-  -- This will call on_trigger() for all the slaves.
+  -- This will call on_trigger() for all the replicas.
   FogMachine.super.do_trigger(self, triggerer, marker, ev)
 end
 
@@ -309,7 +309,7 @@ end
 --      turns before to trigger the message before the fog machine is
 --      fired. If only see_message is provided, the message will only
 --      be printed if the player can see the fog machine. If only
---      cantsee_mesage is provided, the message will be displayed
+--      cantsee_message is provided, the message will be displayed
 --      regardless. In combination, the message will be different
 --      depending on whether or not the player can see the marker. By
 --      default, the message will be displaying using the "warning"

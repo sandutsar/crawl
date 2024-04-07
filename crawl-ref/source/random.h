@@ -78,13 +78,15 @@ bool one_chance_in(int a_million);
 bool x_chance_in_y(int x, int y);
 int random2(int max);
 int maybe_random2(int x, bool random_factor);
-int maybe_random_div(int nom, int denom, bool random_factor);
+int maybe_random2_div(int nom, int denom, bool random_factor);
 int maybe_roll_dice(int num, int size, bool random);
 int random_range(int low, int high);
 int random_range(int low, int high, int nrolls);
 double random_real();
 
 int random2avg(int max, int rolls);
+int random2min(int max, int rolls);
+int random2max(int ran, int rolls);
 int biased_random2(int max, int n);
 int binomial(unsigned n_trials, unsigned trial_prob, unsigned scale = 100);
 bool bernoulli(double n_trials, double trial_prob);

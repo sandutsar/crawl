@@ -26,7 +26,7 @@ enum class abflag
     breath              = 0x00000001, // ability uses DUR_BREATH_WEAPON
     delay               = 0x00000002, // ability has its own delay
     pain                = 0x00000004, // ability must hurt player (ie torment)
-    piety               = 0x00000008, // ability has its own piety cost
+    quiet_fail          = 0x00000008, // no message on failure
     exhaustion          = 0x00000010, // fails if you.exhausted
     instant             = 0x00000020, // doesn't take time to use
     conf_ok             = 0x00000040, // can use even if confused
@@ -38,11 +38,14 @@ enum class abflag
     hostile             = 0x00001000, // failure summons a hostile (Makhleb)
     berserk_ok          = 0x00002000, // can use even if berserk
     card                = 0x00004000, // deck drawing (Nemelex)
-    quiet_fail          = 0x00008000, // no message on failure
-    dir_or_target       = 0x00010000, // uses DIR_NONE targeting
-    target              = 0x00020000, // uses DIR_TARGET targeting
+    torchlight          = 0x00008000, // costs torchlight (Yred)
+    drac_charges        = 0x00010000, // consumes draconian breath charges
+
+    // targeting flags
+    dir_or_target       = 0x10000000, // uses DIR_NONE targeting
+    target              = 0x20000000, // uses DIR_TARGET targeting
     targeting_mask      = abflag::dir_or_target | abflag::target,
-    not_self            = 0x00040000, // can't be self-targeted
+    not_self            = 0x40000000, // can't be self-targeted
 };
 DEF_BITFIELD(ability_flags, abflag);
 
@@ -57,8 +60,8 @@ unsigned int ability_mp_cost(ability_type abil);
 int ability_range(ability_type abil);
 ability_flags get_ability_flags(ability_type ability);
 talent get_talent(ability_type ability, bool check_confused);
-const char* ability_name(ability_type ability);
-vector<const char*> get_ability_names();
+string ability_name(ability_type ability, bool dbname = false);
+vector<string> get_ability_names();
 string get_ability_desc(const ability_type ability, bool need_title = true);
 int choose_ability_menu(const vector<talent>& talents);
 string describe_talent(const talent& tal);

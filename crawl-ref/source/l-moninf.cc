@@ -15,6 +15,7 @@
 #include "libutil.h" // map_find
 #include "mon-book.h"
 #include "mon-pick.h"
+#include "mon-place.h"
 #include "ranged-attack.h"
 #include "spl-cast.h"
 #include "spl-util.h"
@@ -126,8 +127,9 @@ MIRET1(number, base_type, base_type)
  */
 MIRET1(number, number, number)
 /*** Does this monster have a ranged attack we know about?
- * This refers to ranged weapons. Ranged spells and abilities are not included
- * in this check.
+ * A monster is considered to have a ranged attack if it has any of the
+ * following: a reach attack, a throwable missile, a launcher weapon, an
+ * attack wand, or an attack spell with a range greater than 1.
  * @treturn boolean
  * @function has_ranged_attack
  */
@@ -269,7 +271,7 @@ static int moninf_get_defeat_wl(lua_State *ls)
     bool is_evoked = lua_isboolean(ls, 3) ? lua_toboolean(ls, 3) : false;
     int power = is_evoked ?
         (15 + you.skill(SK_EVOCATIONS, 7) / 2) * (wand_mp_cost() + 9) / 9 :
-        calc_spell_power(spell, true);
+        calc_spell_power(spell);
     spell_flags flags = get_spell_flags(spell);
     bool wl_check = testbits(flags, spflag::WL_check)
         && testbits(flags, spflag::dir_or_target)
@@ -337,7 +339,7 @@ static int moninf_get_target_desc(lua_State *ls)
     return 1;
 }
 
-/*** Returns the string displayed if you target this monster with your current weapon.
+/*** Returns the string displayed if you target this monster with a weapon (or unarmed attack).
  * @treturn string (such as "about 18% to evade your dagger")
  * @function target_weapon
  */
@@ -345,7 +347,7 @@ static int moninf_get_target_weapon(lua_State *ls)
 {
     MONINF(ls, 1, mi);
     ostringstream result;
-    describe_to_hit(*mi, result, false);
+    describe_to_hit(*mi, result, you.weapon());
     lua_pushstring(ls, result.str().c_str());
     return 1;
 }
@@ -359,7 +361,7 @@ static int moninf_get_target_spell(lua_State *ls)
 {
     MONINF(ls, 1, mi);
     spell_type spell = spell_by_name(luaL_checkstring(ls, 2), false);
-    string desc = target_desc(*mi, spell);
+    string desc = target_spell_desc(*mi, spell);
     lua_pushstring(ls, desc.c_str());
     return 1;
 }
@@ -373,9 +375,29 @@ static int moninf_get_target_throw(lua_State *ls)
 {
     MONINF(ls, 1, mi);
     item_def *item = *(item_def **) luaL_checkudata(ls, 2, ITEM_METATABLE);
-    ranged_attack attk(&you, nullptr, item, false);
+    ranged_attack attk(&you, nullptr, nullptr, item, false);
     string d = make_stringf("%d%% to hit", to_hit_pct(*mi, attk, false));
     lua_pushstring(ls, d.c_str());
+    return 1;
+}
+
+/*** Returns the string displayed if you target this monster with an evocable.
+ * @tparam item object to be evoked
+ * @treturn string (such as "about 45% to hit")
+ * @function target_evoke
+ */
+static int moninf_get_target_evoke(lua_State *ls)
+{
+    MONINF(ls, 1, mi);
+    item_def *item = *(item_def **) luaL_checkudata(ls, 2, ITEM_METATABLE);
+    if (!item)
+    {
+        lua_pushnil(ls);
+        return 1;
+    }
+
+    string desc = target_evoke_desc(*mi, *item);
+    lua_pushstring(ls, desc.c_str());
     return 1;
 }
 
@@ -396,18 +418,20 @@ LUAFN(moninf_get_holiness)
 {
     MONINF(ls, 1, mi);
 
-    string holi = luaL_checkstring(ls, 2);
-    lowercase(holi);
-    mon_holy_type arg = holiness_by_name(holi);
-    if (!holi.empty() && arg == MH_NONE)
+    if (lua_gettop(ls) >= 2)
     {
-        luaL_argerror(ls, 2, (string("no such holiness: '")
-                              + holi + "'").c_str());
-        return 0;
+        string holi = luaL_checkstring(ls, 2);
+        lowercase(holi);
+        mon_holy_type arg = holiness_by_name(holi);
+        if (arg == MH_NONE)
+        {
+            luaL_argerror(ls, 2, (string("no such holiness: '")
+                                  + holi + "'").c_str());
+            return 0;
+        }
+        else
+            PLUARET(boolean, bool(mi->holi & arg));
     }
-
-    if (!holi.empty())
-        PLUARET(boolean, bool(mi->holi & arg));
     else
         PLUARET(string, holiness_description(mi->holi).c_str());
 }
@@ -654,8 +678,26 @@ LUAFN(moninf_get_can_be_constricted)
         monster dummy;
         dummy.type = mi->type;
         dummy.base_monster = mi->base_type;
-        lua_pushboolean(ls, dummy.res_constrict() < 3);
+        lua_pushboolean(ls, !dummy.res_constrict());
     }
+    return 1;
+}
+
+/*** Can this monster traverse a particular cell?
+ * Does not address doors or traps; returns true if the monster can occupy the cell.
+ * Uses player coordinates
+ * @tparam int x
+ * @tparam int y
+ * @treturn boolean
+ * @function can_traverse
+ */
+LUAFN(moninf_get_can_traverse)
+{
+    MONINF(ls, 1, mi);
+    PLAYERCOORDS(p, 2, 3)
+    lua_pushboolean(ls,
+        map_bounds(p)
+        && monster_habitable_grid(mi->type, env.map_knowledge(p).feat()));
     return 1;
 }
 
@@ -797,6 +839,7 @@ static const struct luaL_reg moninf_lib[] =
     MIREG(is_constricting),
     MIREG(is_constricting_you),
     MIREG(can_be_constricted),
+    MIREG(can_traverse),
     MIREG(reach_range),
     MIREG(is_unique),
     MIREG(is_stationary),
@@ -824,6 +867,7 @@ static const struct luaL_reg moninf_lib[] =
     MIREG(target_weapon),
     MIREG(target_spell),
     MIREG(target_throw),
+    MIREG(target_evoke),
     MIREG(x_pos),
     MIREG(y_pos),
     MIREG(pos),

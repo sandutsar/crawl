@@ -14,6 +14,7 @@
 #include "mpr.h"
 #include "operation-types.h"
 #include "seen-context-type.h"
+#include "transformation.h"
 
 using std::vector;
 
@@ -150,11 +151,11 @@ public:
     }
 
     /**
-     * @return whether this is a stair travel delay, which are generally
-     * uninterruptible but are interrupted by teleport. Note that no stairs
-     * are necessarily involved.
+     * @return whether this is a delay which relocates the player,
+     * which are generally uninterruptible but are interrupted by teleport.
+     * Note that no stairs are necessarily involved.
      */
-    virtual bool is_stair_travel() const
+    virtual bool is_relocation() const
     {
         return is_stairs();
     }
@@ -206,7 +207,7 @@ public:
      * If the player needs to be notified, it should also print a message.
      * @return whether to pop the delay.
      */
-    virtual bool try_interrupt()
+    virtual bool try_interrupt(bool /*force*/)
     {
         // The default is for delays to be uninterruptible once started.
         return false;
@@ -230,23 +231,26 @@ public:
 class EquipOnDelay : public Delay
 {
     item_def& equip;
+    bool primary_weapon;
     bool was_prompted = false;
 
     void start() override;
 
     void tick() override
     {
-        mprf(MSGCH_MULTITURN_ACTION, "You continue putting on %s.",
-             equip.name(DESC_YOUR).c_str());
+        mprf(MSGCH_MULTITURN_ACTION, "You continue %s %s.",
+             get_verb(), equip.name(DESC_YOUR).c_str());
     }
+
+    bool invalidated() override;
 
     void finish() override;
 public:
-    EquipOnDelay(int dur, item_def& item) :
-                 Delay(dur), equip(item)
+    EquipOnDelay(int dur, item_def& item, bool primary = false) :
+                 Delay(dur), equip(item), primary_weapon(primary)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool force = false) override;
 
     const char* name() const override
     {
@@ -257,30 +261,33 @@ public:
     {
         return &item == &equip;
     }
+private:
+    const char* get_verb();
 };
 
 class EquipOffDelay : public Delay
 {
     const item_def& equip;
+    bool primary_weapon;
     bool was_prompted = false;
 
     void start() override;
 
     void tick() override
     {
-        mprf(MSGCH_MULTITURN_ACTION, "You continue taking off %s.",
-             equip.name(DESC_YOUR).c_str());
+        mprf(MSGCH_MULTITURN_ACTION, "You continue %s %s.",
+             get_verb(), equip.name(DESC_YOUR).c_str());
     }
 
     bool invalidated() override;
 
     void finish() override;
 public:
-    EquipOffDelay(int dur, const item_def& item) :
-                   Delay(dur), equip(item)
+    EquipOffDelay(int dur, const item_def& item, bool primary = false) :
+                   Delay(dur), equip(item), primary_weapon(primary)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool force = false) override;
 
     const char* name() const override
     {
@@ -291,6 +298,8 @@ public:
     {
         return &item == &equip;
     }
+private:
+    const char* get_verb();
 };
 
 class JewelleryOnDelay : public Delay
@@ -333,7 +342,7 @@ public:
                   Delay(dur), spell{sp}
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
 
     const char* name() const override
     {
@@ -357,7 +366,12 @@ public:
                   Delay(dur), dest{pos}
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
+
+    bool is_relocation() const override
+    {
+        return true;
+    }
 
     const char* name() const override
     {
@@ -400,7 +414,7 @@ public:
                   Delay(dur), items(vec)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
 
     const char* name() const override
     {
@@ -421,7 +435,7 @@ public:
     AscendingStairsDelay(int dur) : Delay(dur)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
 
     bool is_stairs() const override
     {
@@ -441,7 +455,7 @@ public:
     DescendingStairsDelay(int dur) : Delay(dur)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
 
     bool is_stairs() const override
     {
@@ -480,7 +494,7 @@ public:
         return true;
     }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
 
     BaseRunDelay() : Delay(1)
     { }
@@ -579,7 +593,7 @@ public:
     MacroDelay() : Delay(1)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
 
     bool is_parent() const override
     {
@@ -633,9 +647,9 @@ public:
     ShaftSelfDelay(int dur) : Delay(dur)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool /*force*/) override;
 
-    bool is_stair_travel() const override
+    bool is_relocation() const override
     {
         return true;
     }
@@ -662,7 +676,7 @@ public:
     ExsanguinateDelay(int dur) : Delay(dur)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool force = false) override;
 
     const char* name() const override
     {
@@ -686,11 +700,35 @@ public:
     RevivifyDelay(int dur) : Delay(dur)
     { }
 
-    bool try_interrupt() override;
+    bool try_interrupt(bool force = false) override;
 
     const char* name() const override
     {
         return "revivify";
+    }
+};
+
+class TransformDelay : public Delay
+{
+    transformation form;
+    const item_def *talisman;
+
+    bool was_prompted = false;
+
+    void start() override;
+    void tick() override;
+    bool invalidated() override;
+    void finish() override;
+public:
+    TransformDelay(transformation f, const item_def *t) :
+                   Delay(3), form(f), talisman(t)
+    { }
+
+    bool try_interrupt(bool force = false) override;
+
+    const char* name() const override
+    {
+        return "transform";
     }
 };
 
@@ -699,12 +737,12 @@ void push_delay(shared_ptr<Delay> delay);
 template<typename T, typename... Args>
 shared_ptr<Delay> start_delay(Args&&... args)
 {
-    auto delay = make_shared<T>(forward<Args>(args)...);
+    auto delay = make_shared<T>(std::forward<Args>(args)...);
     push_delay(delay);
     return delay;
 }
 
-void stop_delay(bool stop_stair_travel = false);
+void stop_delay(bool stop_stair_travel = false, bool force = false);
 bool you_are_delayed();
 shared_ptr<Delay> current_delay();
 void handle_delay();

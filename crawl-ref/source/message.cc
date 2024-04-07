@@ -797,7 +797,7 @@ public:
             //
             // However, it should only print one message at a time when it really
             // needs to, i.e. an sound that interrupts the game. Otherwise it is
-            // more efficent to print text together.
+            // more efficient to print text together.
 #ifdef USE_SOUND
             play_sound(check_sound_patterns(orig_full_text));
 #endif
@@ -894,7 +894,8 @@ public:
 #ifdef USE_TILE_WEB
     void send()
     {
-        if (unsent == 0 || (send_ignore_one && unsent == 1)) return;
+        if (unsent == 0 || (send_ignore_one && unsent == 1))
+            return;
 
         if (client_rollback > 0)
         {
@@ -972,7 +973,7 @@ namespace msg
 {
     static bool suppress_messages = false;
     static unordered_set<tee *> current_message_tees;
-    static maybe_bool _msgs_to_stderr = MB_MAYBE;
+    static maybe_bool _msgs_to_stderr = maybe_bool::maybe;
 
     static bool _suppressed()
     {
@@ -982,9 +983,9 @@ namespace msg
     /**
      * RAII logic for controlling echoing to stderr.
      * @param f the new state:
-     *   MB_TRUE: always echo to stderr (mainly used for debugging)
-     *   MB_MAYBE: use default logic, based on mode, io state, etc
-     *   MB_FALSE: never echo to stderr (for suppressing error echoing during
+     *   true: always echo to stderr (mainly used for debugging)
+     *   maybe_bool::maybe: use default logic, based on mode, io state, etc
+     *   false: never echo to stderr (for suppressing error echoing during
      *             startup, e.g. for first-pass initfile processing)
      */
     force_stderr::force_stderr(maybe_bool f)
@@ -1001,11 +1002,10 @@ namespace msg
 
     bool uses_stderr(msg_channel_type channel)
     {
-        if (_msgs_to_stderr == MB_TRUE)
-            return true;
-        else if (_msgs_to_stderr == MB_FALSE)
-            return false;
-        // else, MB_MAYBE:
+        if (_msgs_to_stderr.is_bool())
+            return bool(_msgs_to_stderr);
+
+        // else, maybe_bool::maybe:
 
         if (channel == MSGCH_ERROR)
         {
@@ -1201,6 +1201,7 @@ static msg_colour_type channel_to_msgcol(msg_channel_type channel, int param)
 
         case MSGCH_DIAGNOSTICS:
         case MSGCH_MULTITURN_ACTION:
+        case MSGCH_DECOR_FLAVOUR:
             ret = MSGCOL_DARKGREY; // makes it easier to ignore at times -- bwr
             break;
 
@@ -1547,7 +1548,10 @@ static void _mpr(string text, msg_channel_type channel, int param, bool nojoin,
     msg_colour_type colour = prepare_message(text, channel, param);
 
     string col = colour_to_str(colour_msg(colour));
-    text = "<" + col + ">" + text + "</" + col + ">"; // XXX
+    // lack of a closing tag is intentional: this is a valid color string and
+    // makes fewer assumptions about `text` this way.
+    // TODO: this doesn't override any opening color in `text`...
+    text = "<" + col + ">" + text; // XXX
 
     msg::_append_to_tees(text + "\n", channel);
 
@@ -1597,8 +1601,11 @@ static void _mpr(string text, msg_channel_type channel, int param, bool nojoin,
     if (channel == MSGCH_ERROR)
         interrupt_activity(activity_interrupt::force);
 
-    if (channel == MSGCH_PROMPT || channel == MSGCH_ERROR)
+    if (!crawl_state.parsing_rc
+        && (channel == MSGCH_PROMPT || channel == MSGCH_ERROR))
+    {
         set_more_autoclear(false);
+    }
 
     if (domore)
         more(true);
@@ -1641,11 +1648,7 @@ void msgwin_got_input()
 int msgwin_get_line(string prompt, char *buf, int len,
                     input_history *mh, const string &fill)
 {
-#ifdef TOUCH_UI
-    bool use_popup = true;
-#else
     bool use_popup = !crawl_state.need_save || ui::has_layout();
-#endif
 
     int ret;
     if (use_popup)
@@ -1672,11 +1675,14 @@ int msgwin_get_line(string prompt, char *buf, int len,
         vbox->add_child(input);
 
         popup->on_hotkey_event([&](const ui::KeyEvent& ev) {
-            switch (ev.key())
+            const int lastch = ev.key();
+            if (ui::key_exits_popup(lastch, false))
             {
-            CASE_ESCAPE
-                ret = CK_ESCAPE;
+                ret = CK_ESCAPE; // XX hardcoding
                 return done = true;
+            }
+            switch (lastch)
+            {
             case CK_ENTER:
                 ret = 0;
                 return done = true;
@@ -1687,11 +1693,11 @@ int msgwin_get_line(string prompt, char *buf, int len,
 
 #ifdef USE_TILE_WEB
         tiles.json_open_object();
-        tiles.json_write_string("prompt", colour_prompt.to_colour_string());
+        tiles.json_write_string("prompt", colour_prompt.to_colour_string(colour_msg(colour)));
         tiles.push_ui_layout("msgwin-get-line", 0);
         popup->on_layout_pop([](){ tiles.pop_ui_layout(); });
 #endif
-        ui::run_layout(move(popup), done, input);
+        ui::run_layout(std::move(popup), done, input);
 
         strncpy(buf, input->get_text().c_str(), len - 1);
         buf[len - 1] = '\0';
@@ -1829,7 +1835,7 @@ static msg_colour_type prepare_message(const string& imsg,
     {
         for (const message_colour_mapping &mcm : Options.message_colour_mappings)
         {
-            if (mcm.message.is_filtered(channel, imsg))
+            if (mcm.valid() && mcm.message.is_filtered(channel, imsg))
             {
                 colour = mcm.colour;
                 break;
@@ -1857,6 +1863,7 @@ void clear_messages(bool force)
 
     msgwin.got_input(); // Consider old messages as read.
 
+    // TODO: this doesn't seem to be implemented on webtiles?
     if (Options.clear_messages || force)
         msgwin.clear();
 
@@ -1892,12 +1899,9 @@ static void readkey_more(bool user_forced)
         }
     }
     while (keypress != ' ' && keypress != '\r' && keypress != '\n'
+           && keypress != CK_NUMPAD_ENTER
            && !key_is_escape(keypress)
-#ifdef TOUCH_UI
-           && keypress != CK_MOUSE_CLICK);
-#else
            && (user_forced || keypress != CK_MOUSE_CLICK));
-#endif
 
     if (key_is_escape(keypress))
         set_more_autoclear(true);
@@ -2312,6 +2316,8 @@ void set_msg_dump_file(FILE* file)
     _msg_dump_file = file;
 }
 
+// XX unclear why we have both this and an overload of mpr that takes a
+// formatted_string
 void formatted_mpr(const formatted_string& fs,
                    msg_channel_type channel, int param)
 {

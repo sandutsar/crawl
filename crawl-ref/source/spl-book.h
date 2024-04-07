@@ -28,14 +28,14 @@ bool is_player_spell(spell_type which_spell);
 bool is_player_book_spell(spell_type which_spell);
 bool is_wand_spell(spell_type spell);
 
-bool book_has_title(const item_def &book);
+bool book_has_title(const item_def &book, bool ident = false);
 
 bool can_learn_spell(bool silent = false);
 bool player_has_available_spells();
 bool learn_spell();
 bool learn_spell(spell_type spell, bool wizard = false, bool interactive = true);
 
-bool library_add_spells(vector<spell_type> spells);
+bool library_add_spells(vector<spell_type> spells, bool quiet = false);
 
 string desc_cannot_memorise_reason(spell_type spell);
 

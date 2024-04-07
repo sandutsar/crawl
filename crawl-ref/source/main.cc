@@ -23,9 +23,7 @@
 #endif
 
 #ifndef TARGET_OS_WINDOWS
-# ifndef __ANDROID__
-#  include <langinfo.h>
-# endif
+# include <langinfo.h>
 #endif
 #ifdef USE_UNIX_SIGNALS
 #include <csignal>
@@ -123,6 +121,7 @@
 #include "spl-clouds.h"
 #include "spl-damage.h"
 #include "spl-summoning.h"
+#include "spl-transloc.h"
 #include "spl-util.h"
 #include "stairs.h"
 #include "startup.h"
@@ -147,12 +146,13 @@
 #include "viewgeom.h"
 #include "view.h"
 #include "viewmap.h"
-#ifdef TOUCH_UI
-#include "windowmanager.h"
+#ifdef __ANDROID__
+#include "syscalls.h"
 #endif
 #include "wiz-you.h" // FREEZE_TIME_KEY
 #include "wizard.h" // handle_wizard_command() and enter_explore_mode()
 #include "xom.h" // XOM_CLOUD_TRAIL_TYPE_KEY
+#include "zot.h"
 
 // ----------------------------------------------------------------------
 // Globals whose construction/destruction order needs to be managed
@@ -193,7 +193,7 @@ NORETURN static void _launch_game();
 
 static void _do_berserk_no_combat_penalty();
 static void _do_wait_spells();
-static void _uncurl();
+
 static void _input();
 
 static void _safe_move_player(coord_def move);
@@ -237,13 +237,11 @@ __attribute__((externally_visible))
 #endif
 int main(int argc, char *argv[])
 {
-#ifndef __ANDROID__
-# ifdef DGAMELAUNCH
+#ifdef DGAMELAUNCH
     // avoid commas instead of dots, etc, on CDO
     setlocale(LC_CTYPE, "");
-# else
+#else
     setlocale(LC_ALL, "");
-# endif
 #endif
 #ifdef USE_TILE_WEB
     if (strcasecmp(nl_langinfo(CODESET), "UTF-8"))
@@ -262,7 +260,7 @@ int main(int argc, char *argv[])
 #endif
     // do this explicitly so that static initialization order woes can be
     // ignored.
-    msg::force_stderr echo(MB_MAYBE);
+    msg::force_stderr echo(maybe_bool::maybe);
 
     init_crash_handler();
 
@@ -308,7 +306,7 @@ int main(int argc, char *argv[])
 
         // TODO: would be simpler to just never echo? Do other builds really
         // need this outside of debugging contexts?
-        msg::force_stderr suppress_log_stderr(MB_FALSE);
+        msg::force_stderr suppress_log_stderr(false);
 #endif
         read_init_file();
     }
@@ -351,6 +349,7 @@ static void _reset_game()
     crawl_state.reset_game();
     clear_message_store();
     macro_clear_buffers();
+    crawl_state.show_more_prompt = true;
     the_lost_ones.clear();
     shopping_list = ShoppingList();
     you = player();
@@ -364,6 +363,7 @@ static void _reset_game()
     clear_message_window();
     note_list.clear();
     msg::deinitialise_mpr_streams();
+    quiver::reset_state();
 
 #ifdef USE_TILE_LOCAL
     // [ds] Don't show the title screen again, just go back to
@@ -429,11 +429,17 @@ NORETURN static void _launch_game()
         msg::stream << "<yellow>Welcome" << (game_start? "" : " back") << ", "
                     << you.your_name << " the "
                     << species::name(you.species)
-                    << " " << get_job_name(you.char_class) << ".</yellow>"
-                    << endl;
+                    << " " << get_job_name(you.char_class) << ".</yellow>";
         // TODO: seeded sprint?
         if (crawl_state.type == GAME_TYPE_CUSTOM_SEED)
-            msg::stream << "<white>" << seed_description() << "</white>" << endl;
+            msg::stream << endl << "<white>" << seed_description() << "</white>";
+        else
+        {
+            const string type_name = crawl_state.game_type_name();
+            if (!type_name.empty())
+                msg::stream << "<white> [" << type_name << "]</white>";
+        }
+        msg::stream << endl;
     }
 
 #ifdef USE_TILE
@@ -487,6 +493,17 @@ static void _show_commandline_options_help()
     string help;
 # define puts(x) (help += x, help += '\n')
 #endif
+    if (in_headless_mode())
+    {
+        // TODO: derive exact list from initfile.cc
+#ifdef USE_TILE_LOCAL
+        puts("Headless crawl tiles build: requires -objstat or -mapstat.");
+#else
+        puts("Headless crawl: requires -test, -script, -objstat, -builddb, or other similar parameter.");
+        puts("A single argument will be interpreted as a script name.");
+#endif
+        puts("");
+    }
 
     puts("Command line options:");
     puts("  -help                 prints this list of options");
@@ -511,6 +528,7 @@ static void _show_commandline_options_help()
     puts("  -no-throttle          disable throttling of user Lua scripts");
 #else
     puts("  -throttle             enable throttling of user Lua scripts");
+    puts("  -lua-max-memory       max memory in MB allowed for user Lua scripts");
     puts("  -seed <number>        specify a game seed to use when creating a new game");
 #endif
 
@@ -540,8 +558,10 @@ static void _show_commandline_options_help()
     puts("  -test               run all test cases in test/ except test/big/");
     puts("  -test foo,bar       run only tests \"foo\" and \"bar\"");
     puts("  -test list          list available tests");
-    puts("  -script <name>      run script matching <name> in ./scripts");
 #endif
+    // XX should this really be advertised outside of debug builds?
+    puts("  -headless           force headless mode (no pty)");
+    puts("  -script <name>      run script matching <name> in ./scripts");
 #ifdef DEBUG_STATISTICS
 #ifndef DEBUG_DIAGNOSTICS
     puts("");
@@ -559,17 +579,20 @@ static void _show_commandline_options_help()
     puts("      Defaults to entire dungeon; same level syntax as -mapstat.");
     puts("  -iters <num>        For -mapstat and -objstat, set the number of "
          "iterations");
-    puts("  -force-map <map>    For -mapstat and -objstat, alway choose the "
+    puts("  -force-map <map>    For -mapstat and -objstat, always choose the "
          "      given map on every level.");
 #endif
     puts("");
     puts("Miscellaneous options:");
+    puts("  -builddb         don't start the game; rebuild the .des cache and exit");
+    puts("  -reset-cache     force a full rebuild of the .des cache");
     puts("  -dump-maps       write map Lua to stderr when parsing .des files");
 #ifndef TARGET_OS_WINDOWS
     puts("  -gdb/-no-gdb     produce gdb backtrace when a crash happens (default:on)");
 #endif
     puts("  -playable-json   list playable species, jobs, and character combos.");
     puts("  -branches-json   list branch data.");
+    puts("  -no-player-bones do not write player's info to bones files.");
 
 #if defined(TARGET_OS_WINDOWS) && defined(USE_TILE_LOCAL)
     text_popup(help, L"Dungeon Crawl command line help");
@@ -601,11 +624,18 @@ static string _wanderer_spell_str()
                               });
 }
 
+static string _get_equip_str()
+{
+    if (inv_count() == 0)
+        return "";
+    if (you.char_class == JOB_WANDERER)
+        return _wanderer_equip_str();
+    return "";
+}
+
 static void _djinn_announce_spells()
 {
-    const string equip_str = you.char_class == JOB_WANDERER ?
-                                        _wanderer_equip_str():
-                                        "";
+    const string equip_str =_get_equip_str();
     const string spell_str = you.spell_no ?
                                 "the following spells memorised: " + _wanderer_spell_str() :
                                 "";
@@ -614,24 +644,31 @@ static void _djinn_announce_spells()
 
     const string spacer = spell_str.empty() || equip_str.empty() ? "" : "; and ";
     mprf("You begin with %s%s%s.", equip_str.c_str(), spacer.c_str(), spell_str.c_str());
+
+    take_note(Note(NOTE_MESSAGE, 0, 0, you.your_name + " set off with " +
+                                       equip_str + spell_str + "."));
 }
 
 // Announce to the message log and make a note of the player's starting items,
 // spells and spell library
 static void _wanderer_note_equipment()
 {
-    const string equip_str = _wanderer_equip_str();
+    const string equip_str = inv_count() > 0 ? _wanderer_equip_str() : "";
+
+    const string eq_spacer = equip_str.empty() ? "" : "; and ";
 
     // Wanderers start with at most 1 spell memorised.
     const string spell_str =
         !you.spell_no ? "" :
-        "; and the following spell memorised: "
+        eq_spacer + "the following spell memorised: "
         + _wanderer_spell_str();
+
+    const string spell_spacer = spell_str.empty() && equip_str.empty() ? "" : "; and ";
 
     auto const library = get_sorted_spell_list(true, true);
     const string library_str =
         !library.size() ? "" :
-        "; and the following spells available to memorise: "
+        spell_spacer + "the following spells available to memorise: "
         + comma_separated_fn(library.begin(), library.end(),
                              [] (const spell_type spell) -> string
                              {
@@ -644,7 +681,7 @@ static void _wanderer_note_equipment()
          spell_str.c_str(), library_str.c_str());
 
     const string combined_str = you.your_name + " set off with "
-                                + equip_str + spell_str + library_str;
+                                + equip_str + spell_str + library_str + ".";
     take_note(Note(NOTE_MESSAGE, 0, 0, combined_str));
 }
 
@@ -752,22 +789,12 @@ static void _start_running(int dir, int mode)
     if (Hints.hints_events[HINT_SHIFT_RUN] && mode == RMODE_START)
         Hints.hints_events[HINT_SHIFT_RUN] = false;
 
-    if (!i_feel_safe(true))
-        return;
-
-    const coord_def next_pos = you.pos() + Compass[dir];
-
-    if (!have_passive(passive_t::slime_wall_immune)
-        && (dir == RDIR_REST || you.is_habitable_feat(env.grid(next_pos)))
-        && count_adjacent_slime_walls(next_pos))
+    if (!i_feel_safe(true)
+        || !can_rest_here(true)
+            && (mode == RMODE_REST_DURATION || mode == RMODE_WAIT_DURATION))
     {
-        mprf(MSGCH_WARN, "You're about to run into a slime covered wall!");
         return;
     }
-
-    string wall_jump_err;
-    if (wu_jian_can_wall_jump(next_pos, wall_jump_err))
-       return; // Do not wall jump while running.
 
     you.running.initialise(dir, mode);
 }
@@ -816,12 +843,15 @@ static bool _cmd_is_repeatable(command_type cmd, bool is_again = false)
     case CMD_MEMORISE_SPELL:
     case CMD_EXPLORE:
     case CMD_INTERLEVEL_TRAVEL:
+    case CMD_UNEQUIP:
+    case CMD_REMOVE_ARMOUR:
+    case CMD_EQUIP:
+    case CMD_WEAR_ARMOUR:
         mpr("You can't repeat multi-turn commands.");
         return false;
 
     // Miscellaneous non-repeatable commands.
     case CMD_TOGGLE_AUTOPICKUP:
-    case CMD_TOGGLE_TRAVEL_SPEED:
     case CMD_TOGGLE_SOUND:
     case CMD_ADJUST_INVENTORY:
     case CMD_QUIVER_ITEM:
@@ -1046,6 +1076,10 @@ static void _input()
         update_screen();
     }
 
+    if (you.props.exists(DREAMSHARD_KEY))
+        you.props.erase(DREAMSHARD_KEY);
+    crawl_state.potential_pursuers.clear();
+
     apply_exp();
 
     // Unhandled things that should have caused death.
@@ -1060,7 +1094,6 @@ static void _input()
                                       "repetition.");
         crawl_state.prev_cmd = CMD_NO_CMD;
         flush_prev_message();
-        getchm();
         return;
     }
 
@@ -1111,12 +1144,20 @@ static void _input()
         end_wait_spells();
         handle_delay();
 
+        // Some delays set you.turn_is_over.
+
+        bool time_is_frozen = false;
+
+#ifdef WIZARD
+        if (you.props.exists(FREEZE_TIME_KEY))
+            time_is_frozen = true;
+#endif
+
         // Some delays reset you.time_taken.
-        if (you.time_taken || you.turn_is_over)
+        if (!time_is_frozen && (you.time_taken || you.turn_is_over))
         {
             if (you.berserk())
                 _do_berserk_no_combat_penalty();
-            _uncurl();
             world_reacts();
         }
 
@@ -1215,7 +1256,7 @@ static void _input()
         // binding, your turn may be ended by the first invoke of the
         // macro.
         if (!you.turn_is_over && cmd != CMD_NEXT_CMD)
-            process_command(cmd, real_prev_cmd);
+            ::process_command(cmd, real_prev_cmd);
 
         repeat_again_rec.paused = true;
 
@@ -1250,7 +1291,6 @@ static void _input()
             _do_berserk_no_combat_penalty();
 
         _do_wait_spells();
-        _uncurl();
 
         world_reacts();
     }
@@ -1268,7 +1308,6 @@ static void _input()
     _update_replay_state();
 
     crawl_state.clear_god_acting();
-
 }
 
 static bool _can_take_stairs(dungeon_feature_type ftype, bool down,
@@ -1295,7 +1334,7 @@ static bool _can_take_stairs(dungeon_feature_type ftype, bool down,
     }
 
     // Immobile
-    if (you.is_stationary())
+    if (!you.is_motile())
     {
         canned_msg(MSG_CANNOT_MOVE);
         return false;
@@ -1345,26 +1384,23 @@ static bool _can_take_stairs(dungeon_feature_type ftype, bool down,
     }
 
     // Rune locks
-    int min_runes = 0;
-    for (branch_iterator it; it; ++it)
+    switch (ftype)
     {
-        if (ftype != it->entry_stairs)
-            continue;
-
-        if (!you.level_visited(level_id(it->id, 1)))
+    case DNGN_EXIT_VAULTS:
+        if (runes_in_pack() < 1)
         {
-            min_runes = runes_for_branch(it->id);
-            if (runes_in_pack() < min_runes)
-            {
-                if (min_runes == 1)
-                    mpr("You need a rune to enter this place.");
-                else
-                    mprf("You need at least %d runes to enter this place.",
-                         min_runes);
-                return false;
-            }
+            mpr("You need a rune to leave the Vaults.");
+            return false;
         }
-
+        break;
+    case DNGN_ENTER_ZOT:
+        if (runes_in_pack() < 3 && !crawl_state.game_is_descent())
+        {
+            mpr("You need at least three runes to enter the Realm of Zot.");
+            return false;
+        }
+        break;
+    default:
         break;
     }
 
@@ -1399,6 +1435,13 @@ static bool _prompt_stairs(dungeon_feature_type ygrd, bool down, bool shaft)
 {
     // Certain portal types always carry warnings.
     if (!prompt_dangerous_portal(ygrd))
+    {
+        canned_msg(MSG_OK);
+        return false;
+    }
+
+    // Descent mode prompts for "atypical" branch order that skips content
+    if (crawl_state.game_is_descent() && !prompt_descent_shortcut(ygrd))
     {
         canned_msg(MSG_OK);
         return false;
@@ -1456,7 +1499,8 @@ static bool _prompt_stairs(dungeon_feature_type ygrd, bool down, bool shaft)
         return false;
     }
 
-    if (!down && player_in_branch(BRANCH_ZOT) && you.depth == 5
+    if (!down && player_in_branch(BRANCH_ZOT)
+        && you.depth == brdepth[BRANCH_ZOT]
         && you.chapter == CHAPTER_ANGERED_PANDEMONIUM)
     {
         if (!yesno("Really leave the Orb behind?", false, 'n'))
@@ -1480,6 +1524,9 @@ static bool _prompt_stairs(dungeon_feature_type ygrd, bool down, bool shaft)
         }
     }
 
+    if (ygrd != DNGN_TRANSPORTER && beogh_cancel_leaving_floor())
+        return false;
+
     if (Options.warn_hatches)
     {
         if (feat_is_escape_hatch(ygrd))
@@ -1498,6 +1545,17 @@ static bool _prompt_stairs(dungeon_feature_type ygrd, bool down, bool shaft)
                 canned_msg(MSG_OK);
                 return false;
             }
+        }
+    }
+
+    if (down && ygrd == DNGN_ENTER_VAULTS && !runes_in_pack())
+    {
+        if (!yes_or_no("You cannot leave the Vaults without holding a Rune of "
+                       "Zot, and the runes within are jealously guarded."
+                       " Continue?"))
+        {
+            canned_msg(MSG_OK);
+            return false;
         }
     }
 
@@ -1599,6 +1657,8 @@ static void _take_stairs(bool down)
         tag_followers(); // Only those beside us right now can follow.
         if (down)
             start_delay<DescendingStairsDelay>(1);
+        else if (crawl_state.game_is_descent())
+            up_stairs();
         else
             start_delay<AscendingStairsDelay>(1);
         id_floor_items();
@@ -1638,10 +1698,10 @@ static void _experience_check()
         perc = (you.experience - exp_needed(xl)) * 100
              / (exp_needed(xl + 1) - exp_needed(xl));
         perc = (nl - xl) * 100 - perc;
-        mprf(you.lives < 2 ?
-             "You'll get an extra life in %d.%02d levels' worth of XP." :
-             "If you died right now, you'd get an extra life in %d.%02d levels' worth of XP.",
-             perc / 100, perc % 100);
+        you.lives < 2 ?
+             mprf("You'll get an extra life in %d.%02d levels' worth of XP.", perc / 100, perc % 100) :
+             mprf("If you died right now, you'd get an extra life in %d.%02d levels' worth of XP.",
+             perc / 100 , perc % 100);
     }
 
     handle_real_time();
@@ -1661,7 +1721,7 @@ static void _experience_check()
                         << " turns if you stay in this branch and explore no"
                         << " new floors.";
         }
-        msg::stream << endl;
+        msg::stream << endl << gem_status();
     }
 
 #ifdef DEBUG_DIAGNOSTICS
@@ -1670,46 +1730,26 @@ static void _experience_check()
 #endif
 }
 
-static void _do_remove_armour()
-{
-    if (you.has_mutation(MUT_NO_ARMOUR))
-    {
-        mprf("You can't remove your %s, sorry.",
-                            species::skin_name(you.species).c_str());
-        return;
-    }
-
-    if (!form_can_wear())
-    {
-        mpr("You can't wear or remove anything in your present form.");
-        return;
-    }
-
-    int index = 0;
-    if (armour_prompt("Take off which item?", &index, OPER_TAKEOFF))
-        takeoff_armour(index);
-}
-
-static void _toggle_travel_speed()
-{
-    you.travel_ally_pace = !you.travel_ally_pace;
-    if (you.travel_ally_pace)
-        mpr("You pace your travel speed to your slowest ally.");
-    else
-    {
-        mpr("You travel at normal speed.");
-        you.running.travel_speed = 0;
-    }
-}
-
 static void _do_rest()
 {
-    if (i_feel_safe())
+
+#ifdef WIZARD
+    if (you.props.exists(FREEZE_TIME_KEY))
     {
-        if ((you.hp == you.hp_max || !player_regenerates_hp())
-            && (you.magic_points == you.max_magic_points
-                || !player_regenerates_mp())
-            && ancestor_full_hp())
+        mprf(MSGCH_WARN, "Cannot rest while time is frozen.");
+        return;
+    }
+#endif
+
+    if (should_fear_zot() && !yesno("Really rest while Zot is near?", false, 'n'))
+    {
+        canned_msg(MSG_OK);
+        return;
+    }
+
+    if (i_feel_safe() && can_rest_here())
+    {
+        if (you.is_sufficiently_rested(true) && ancestor_full_hp())
         {
             mpr("You start waiting.");
             _start_running(RDIR_REST, RMODE_WAIT_DURATION);
@@ -1718,6 +1758,9 @@ static void _do_rest()
         else
             mpr("You start resting.");
     }
+    // intentional fallthrough for else case! Messaging is handled in
+    // _start_running, update the corresponding conditional there if you
+    // change this one.
 
     _start_running(RDIR_REST, RMODE_REST_DURATION);
 }
@@ -1748,19 +1791,21 @@ static void _do_display_map()
 static void _do_cycle_quiver(int dir)
 {
     const bool changed = you.quiver_action.cycle(dir);
-    you.launcher_action.set(you.quiver_action.get());
     quiver::set_needs_redraw();
 
     const bool valid = you.quiver_action.get()->is_valid();
 
     if (!changed || !valid)
     {
-        const bool others = quiver::menu_size() > (valid ? 1 : 0);
-        // Things could be excluded from this via inscriptions, custom
-        // fire_order, or setting fire_items_start.
+        // `others`: there are quiverable but uncyclable actions.
+        // Things could be excluded from cycling via inscriptions, custom
+        // fire_order, or setting fire_items_start, and still available from
+        // the menu. This messaging still excludes stuff that requires
+        // force-quivering, e.g. zigfigs
+        const bool others = !valid && quiver::anything_to_quiver();
         mprf("No %squiver actions available for cycling.%s",
             valid ? "other " : "",
-            others ? " Use <white>Q</white> to select from all actions."
+            others ? " Use [<white>Q</white>] to select from all actions."
                    : "");
     }
 }
@@ -1854,58 +1899,6 @@ static void _handle_autofight(command_type cmd, command_type prev_cmd)
         mprf(MSGCH_ERROR, "Lua error: %s", clua.error.c_str());
 }
 
-class LookupHelpMenu : public Menu
-{
-public:
-    class LookupHelpMenuEntry : public MenuEntry
-    {
-    public:
-        LookupHelpMenuEntry(lookup_help_type lht)
-        : MenuEntry(uppercase_first(lookup_help_type_name(lht)),
-                    MEL_ITEM, 1, tolower(lookup_help_type_shortcut(lht))),
-          typ(lht)
-        {
-            // TODO: tiles!
-        }
-
-        lookup_help_type typ;
-    };
-
-    LookupHelpMenu()
-        : Menu(MF_SINGLESELECT | MF_ALLOW_FORMATTING
-                | MF_ARROWS_SELECT | MF_WRAP)
-    {
-        action_cycle = Menu::CYCLE_NONE;
-        menu_action  = Menu::ACT_EXECUTE;
-        set_title(new MenuEntry("Info Lookup", MEL_TITLE));
-        on_single_selection = [](const MenuEntry& item)
-        {
-            const LookupHelpMenuEntry *lhme = dynamic_cast<const LookupHelpMenuEntry *>(&item);
-            if (!lhme)
-                return false; // back button
-            find_description_of_type(lhme->typ);
-            return true;
-        };
-    }
-
-    void fill_entries()
-    {
-        clear();
-        auto back = new MenuEntry("Back to main menu", MEL_ITEM, 1, CK_ESCAPE);
-        back->add_tile(tileidx_command(CMD_GAME_MENU));
-        add_entry(back);
-        for (int i = FIRST_LOOKUP_HELP_TYPE; i < NUM_LOOKUP_HELP_TYPES; ++i)
-            add_entry(new LookupHelpMenuEntry((lookup_help_type)i));
-    }
-
-    vector<MenuEntry *> show(bool reuse_selections = false) override
-    {
-        fill_entries();
-        cycle_hover();
-        return Menu::show(reuse_selections);
-    }
-};
-
 class GameMenu : public Menu
 {
 // this could be easily generalized for other menus that select among commands
@@ -1915,20 +1908,27 @@ public:
     {
     public:
         CmdMenuEntry(string label, MenuEntryLevel _level, int hotk=0,
-                                                command_type _cmd=CMD_NO_CMD)
-            : MenuEntry(label, _level, 1, hotk), cmd(_cmd)
+                                                command_type _cmd=CMD_NO_CMD,
+                                                bool _uses_popup=true)
+            : MenuEntry(label, _level, 1, hotk), cmd(_cmd),
+              uses_popup(_uses_popup)
         {
             if (tileidx_command(cmd) != TILEG_TODO)
                 add_tile(tileidx_command(cmd));
         }
 
         command_type cmd;
+        bool uses_popup;
     };
 
     command_type cmd;
     GameMenu()
         : Menu(MF_SINGLESELECT | MF_ALLOW_FORMATTING
-                | MF_ARROWS_SELECT | MF_WRAP),
+                | MF_ARROWS_SELECT | MF_WRAP | MF_INIT_HOVER
+#ifdef USE_TILE_LOCAL
+                | MF_SPECIAL_MINUS // doll editor (why?)
+#endif
+                ),
           cmd(CMD_NO_CMD)
     {
         set_tag("game_menu");
@@ -1942,27 +1942,42 @@ public:
             const CmdMenuEntry *c = dynamic_cast<const CmdMenuEntry *>(&item);
             if (c)
             {
-                if (c->cmd == CMD_LOOKUP_HELP_MENU)
+                if (c->uses_popup)
                 {
-                    LookupHelpMenu m;
-                    m.show();
+                    // recurse
+                    if (c->cmd != CMD_NO_CMD)
+                        ::process_command(c->cmd, CMD_GAME_MENU);
                     return true;
                 }
-
+                // otherwise, exit menu and process in the main process_command call
                 cmd = c->cmd;
+                return false;
             }
-            return false;
+            return true;
         };
+    }
+
+    bool skip_process_command(int keyin) override
+    {
+        if (keyin == '?')
+            return true; // hotkeyed
+        return Menu::skip_process_command(keyin);
     }
 
     void fill_entries()
     {
         clear();
         add_entry(new CmdMenuEntry("", MEL_SUBTITLE));
-        add_entry(new CmdMenuEntry("Return to game", MEL_ITEM, CK_ESCAPE));
+        add_entry(new CmdMenuEntry("Return to game", MEL_ITEM, CK_ESCAPE,
+            CMD_NO_CMD, false));
         items[1]->add_tile(tileidx_command(CMD_GAME_MENU));
-        add_entry(new CmdMenuEntry("Save and return to main menu",
-            MEL_ITEM, 'S', CMD_SAVE_GAME_NOW));
+        // n.b. CMD_SAVE_GAME_NOW crashes on returning to the main menu if we
+        // don't exit out of this popup now, not sure why
+        add_entry(new CmdMenuEntry(
+            (crawl_should_restart(game_exit::save)
+                            ? "Save and return to main menu"
+                            : "Save and exit"),
+            MEL_ITEM, 'S', CMD_SAVE_GAME_NOW, false));
         add_entry(new CmdMenuEntry("Generate and view character dump",
             MEL_ITEM, '#', CMD_SHOW_CHARACTER_DUMP));
 #ifdef USE_TILE_LOCAL
@@ -1974,21 +1989,24 @@ public:
         add_entry(new CmdMenuEntry("Help and manual",
             MEL_ITEM, '?', CMD_DISPLAY_COMMANDS));
         add_entry(new CmdMenuEntry("Lookup info",
-            MEL_ITEM, 'i', CMD_LOOKUP_HELP_MENU));
+            MEL_ITEM, '/', CMD_LOOKUP_HELP));
 #ifdef TARGET_OS_MACOSX
         add_entry(new CmdMenuEntry("Show options file in finder",
             MEL_ITEM, 'O', CMD_REVEAL_OPTIONS));
 #endif
+#ifdef __ANDROID__
+        add_entry(new CmdMenuEntry("Toggle on-screen keyboard",
+            MEL_ITEM, CK_F12, CMD_TOGGLE_KEYBOARD));
+#endif
         add_entry(new CmdMenuEntry("", MEL_SUBTITLE));
         add_entry(new CmdMenuEntry(
                             "Quit and <lightred>abandon character</lightred>",
-            MEL_ITEM, 'Q', CMD_QUIT));
+            MEL_ITEM, 'Q', CMD_QUIT, false));
     }
 
     vector<MenuEntry *> show(bool reuse_selections = false) override
     {
         fill_entries();
-        cycle_hover();
         return Menu::show(reuse_selections);
     }
 };
@@ -2104,8 +2122,6 @@ void process_command(command_type cmd, command_type prev_cmd)
         break;
 #endif
 
-    case CMD_TOGGLE_TRAVEL_SPEED:        _toggle_travel_speed(); break;
-
         // Map commands.
     case CMD_CLEAR_MAP:       clear_map_or_travel_trail(); break;
     case CMD_DISPLAY_OVERMAP: display_overview(); break;
@@ -2134,7 +2150,7 @@ void process_command(command_type cmd, command_type prev_cmd)
     case CMD_ADJUST_INVENTORY: adjust(); break;
 
     case CMD_SAFE_WAIT:
-        if (!i_feel_safe(true))
+        if (!i_feel_safe(true) && can_rest_here(true))
             break;
         // else fall-through
     case CMD_WAIT:
@@ -2153,29 +2169,26 @@ void process_command(command_type cmd, command_type prev_cmd)
     case CMD_FIRE:                 you.quiver_action.target(); break;
     case CMD_FORCE_CAST_SPELL:     do_cast_spell_cmd(true);  break;
     case CMD_LOOK_AROUND:          do_look_around();         break;
-    case CMD_QUAFF:                drink();                  break;
-    case CMD_READ:                 read();                   break;
-    case CMD_REMOVE_ARMOUR:        _do_remove_armour();      break;
-    case CMD_REMOVE_JEWELLERY:     remove_ring();            break;
+    case CMD_QUAFF:                use_an_item(OPER_QUAFF);  break;
+    case CMD_READ:                 use_an_item(OPER_READ);   break;
+    case CMD_UNEQUIP:              use_an_item(OPER_UNEQUIP); break;
+    case CMD_REMOVE_ARMOUR:        use_an_item(OPER_TAKEOFF); break;
+    case CMD_REMOVE_JEWELLERY:     use_an_item(OPER_REMOVE); break;
     case CMD_SHOUT:                issue_orders();           break;
-    case CMD_THROW_ITEM_NO_QUIVER: throw_item_no_quiver();   break;
-    case CMD_WEAPON_SWAP:          wield_weapon(true);       break;
-    case CMD_WEAR_ARMOUR:          wear_armour();            break;
-    case CMD_WEAR_JEWELLERY:       puton_ring(-1);           break;
-    case CMD_WIELD_WEAPON:         wield_weapon(false);      break;
+    case CMD_FIRE_ITEM_NO_QUIVER:  fire_item_no_quiver();    break;
+    case CMD_WEAPON_SWAP:          auto_wield();             break;
+    case CMD_EQUIP:                use_an_item(OPER_EQUIP);  break;
+    case CMD_WEAR_ARMOUR:          use_an_item(OPER_WEAR);   break;
+    case CMD_WEAR_JEWELLERY:       use_an_item(OPER_PUTON);  break;
+    case CMD_WIELD_WEAPON:         use_an_item(OPER_WIELD);  break;
+    case CMD_EVOKE:                use_an_item(OPER_EVOKE);  break;
     case CMD_ZAP_WAND:             zap_wand();               break;
-
     case CMD_DROP:
         drop();
         break;
 
     case CMD_DROP_LAST:
         drop_last();
-        break;
-
-    case CMD_EVOKE:
-        if (!evoke_item())
-            flush_input_buffer(FLUSH_ON_FAILURE);
         break;
 
     case CMD_PRIMARY_ATTACK:
@@ -2235,7 +2248,10 @@ void process_command(command_type cmd, command_type prev_cmd)
         update_screen();
         break;
     case CMD_RESISTS_SCREEN:           print_overview_screen();        break;
-    case CMD_LOOKUP_HELP:           keyhelp_query_descriptions();      break;
+    case CMD_LOOKUP_HELP:
+        keyhelp_query_descriptions(prev_cmd == CMD_GAME_MENU
+                                                ? prev_cmd : CMD_NO_CMD);
+        break;
 
     case CMD_DISPLAY_RELIGION:
     {
@@ -2393,10 +2409,13 @@ void process_command(command_type cmd, command_type prev_cmd)
         debug_terp_dlua(clua);
         break;
 
-#ifdef TOUCH_UI
-    case CMD_SHOW_KEYBOARD:
-        ASSERT(wm);
-        wm->show_keyboard();
+#ifdef __ANDROID__
+    case CMD_TOGGLE_TAB_ICONS:
+        tiles.toggle_tab_icons();
+        break;
+
+    case CMD_TOGGLE_KEYBOARD:
+        jni_keyboard_control(true);
         break;
 #endif
 
@@ -2428,7 +2447,10 @@ static void _prep_input()
 
     you.redraw_status_lights = true;
     if (you.running == 0)
+    {
         you.quiver_action.set_needs_redraw();
+        you.refresh_rampage_hints();
+    }
     print_stats();
     update_screen();
 
@@ -2517,18 +2539,12 @@ static void _update_still_winds()
     end_still_winds();
 }
 
-static void _check_spectral_weapon()
-{
-    if (!you.triggered_spectral)
-        if (monster* sw = find_spectral_weapon(&you))
-            end_spectral_weapon(sw, false, true);
-    you.triggered_spectral = false;
-}
-
 void world_reacts()
 {
     // All markers should be activated at this point.
     ASSERT(!env.markers.need_activate());
+
+    you.rampage_hints.clear(); // only draw on your turn
 
     fire_final_effects();
 
@@ -2549,6 +2565,9 @@ void world_reacts()
 
     crawl_state.clear_mon_acting();
 
+    if (you.time_taken)
+        descent_crumble_stairs();
+
     if (!crawl_state.game_is_arena())
     {
         you.turn_is_over = true;
@@ -2567,7 +2586,7 @@ void world_reacts()
     _check_banished();
     _check_sanctuary();
     _check_trapped();
-    _check_spectral_weapon();
+    check_spectral_weapon(you);
 
     run_environment_effects();
 
@@ -2643,12 +2662,14 @@ void world_reacts()
         update_turn_count();
         msgwin_new_turn();
         crawl_state.lua_calls_no_turn = 0;
-        if (crawl_state.game_is_sprint()
-            && !(you.num_turns % 256)
+        if ((crawl_state.game_is_sprint() && !(you.num_turns % 256)
+                || crawl_state.save_after_turn)
             && !you_are_delayed()
             && !crawl_state.disables[DIS_SAVE_CHECKPOINTS])
         {
             // Resting makes the saving quite random, but meh.
+            crawl_state.save_after_turn = false;
+            save_level(level_id::current());
             save_game(false);
         }
     }
@@ -2743,6 +2764,13 @@ static void _swing_at_target(coord_def move)
 {
     dist target;
     target.target = you.pos() + move;
+
+    if (god_protects(monster_at(target.target), false))
+        return;
+
+    // Don't warn the player "too injured to fight recklessly" when they
+    // explicitly request an attack.
+    unwind_bool autofight_ok(crawl_state.skip_autofight_check, true);
     // this lets ranged weapons work via this command also -- good or bad?
     quiver::get_primary_action()->trigger(target);
 }
@@ -2794,25 +2822,18 @@ static void _do_berserk_no_combat_penalty()
  */
 static void _do_wait_spells()
 {
-    handle_searing_ray();
+    handle_searing_ray(you);
     handle_maxwells_coupling();
     handle_flame_wave();
 }
 
-// palentongas uncurl at the start of the turn
-static void _uncurl()
-{
-    if (you.props[PALENTONGA_CURL_KEY].get_bool())
-    {
-        you.props[PALENTONGA_CURL_KEY] = false;
-        you.redraw_armour_class = true;
-    }
-}
-
 static void _safe_move_player(coord_def move)
 {
-    if (!i_feel_safe(true))
+    if (!i_feel_safe(true)) {
+        // Clear out other queued up commands.
+        macro_clear_buffers();
         return;
+    }
     move_player_action(move);
 }
 

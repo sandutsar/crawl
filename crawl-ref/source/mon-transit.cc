@@ -18,6 +18,7 @@
 #include "god-passive.h" // passive_t::convert_orcs
 #include "items.h"
 #include "libutil.h" // map_find
+#include "mon-behv.h"
 #include "mon-place.h"
 #include "mpr.h"
 #include "religion.h"
@@ -127,6 +128,11 @@ static void _level_place_followers(m_transit_list &m)
 static void _place_lost_ones(void (*placefn)(m_transit_list &ml))
 {
     level_id c = level_id::current();
+    if (c.branch == BRANCH_ABYSS)
+    {
+        c.depth = 1; // All monsters transiting to abyss are placed in Abyss:1.
+                     // Look, don't ask me.
+    }
 
     monsters_in_transit::iterator i = the_lost_ones.find(c);
     if (i == the_lost_ones.end())
@@ -161,6 +167,9 @@ static monster* _place_lost_monster(follower &f)
         mons->flags &= ~MF_JUST_SUMMONED;
         // Don't keep chasing forever.
         mons->props.erase(OKAWARU_DUEL_ABANDONED_KEY);
+        // The status should already have been removed from the player, but
+        // this prevents an erroneous status indicator sticking on the monster
+        mons->del_ench(ENCH_BULLSEYE_TARGET);
         return update_monster(*mons, turns);
     }
     else
@@ -179,7 +188,11 @@ static void _level_place_lost_monsters(m_transit_list &m)
         // a duel, even in the Abyss.
         if (player_in_branch(BRANCH_ABYSS)
             && !mon->mons.props.exists(OKAWARU_DUEL_ABANDONED_KEY)
-            && coinflip())
+            // The Abyss can try to place monsters as 'lost' before it places
+            // followers normally, and this can result in companion list desyncs.
+            // Try to prevent that.
+            && ((mon->mons.flags & MF_TAKING_STAIRS)
+                || coinflip()))
         {
             continue;
         }
@@ -292,6 +305,21 @@ monster* follower::place(bool near_player)
     return nullptr;
 }
 
+monster* follower::peek()
+{
+    ASSERT(mons.alive());
+
+    monster *m = get_free_monster();
+    if (!m)
+        return nullptr;
+
+    // Copy the saved data.
+    *m = mons;
+    restore_mons_items(*m);
+
+    return m;
+}
+
 void follower::restore_mons_items(monster& m)
 {
     for (int i = 0; i < NUM_MONSTER_SLOTS; ++i)
@@ -327,7 +355,9 @@ static bool _mons_can_follow_player_from(const monster &mons,
     if (!mons.alive()
         || mons.speed_increment < 50
         || mons.incapacitated()
-        || mons.is_stationary())
+        || mons.is_stationary()
+        || mons.is_constricted()
+        || mons.has_ench(ENCH_BOUND))
     {
         return false;
     }
@@ -339,7 +369,7 @@ static bool _mons_can_follow_player_from(const monster &mons,
     // seeking the player will follow up/down stairs.
     if (!mons.friendly()
           && (!mons_is_seeking(mons) || mons.foe != MHITYOU)
-        || mons.foe == MHITNOT)
+        || mons.foe == MHITNOT && mons.behaviour != BEH_WITHDRAW)
     {
         return false;
     }
@@ -383,6 +413,7 @@ static bool _tag_follower_at(const coord_def &pos, const coord_def &from,
     fol->patrol_point.reset();
     fol->travel_path.clear();
     fol->travel_target = MTRAV_NONE;
+    mons_end_withdraw_order(*fol);
 
     dprf("%s is marked for following.", fol->name(DESC_THE, true).c_str());
     return true;
@@ -484,7 +515,11 @@ static bool _transport_follower_at(const coord_def &pos, const coord_def &from,
     if (!_mons_can_follow_player_from(*fol, from, true))
         return false;
 
-    if (fol->find_place_to_live(true))
+    // Specifically leave friendly monsters behind if there is nowhere to place
+    // then on the other side of a transporter (instead of teleporting them to
+    // random other places on the floor). Doing so can interact poorly with
+    // Guantlet and Beogh in particular.
+    if (fol->find_place_to_live(true, fol->friendly()))
     {
         real_follower = true;
         env.map_knowledge(pos).clear_monster();

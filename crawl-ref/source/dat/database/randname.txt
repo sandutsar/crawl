@@ -73,8 +73,11 @@ of @_battle_or_war_@
 w:1
 of @player_doom@
 
-w:9
+w:8
 of @death_or_doom@
+
+w:1
+of @_verbing_@ @death_or_doom@
 
 w:6
 of @_adjective_@ @_strategy_or_justice_@
@@ -122,9 +125,6 @@ of @_place_name_@
 w:5
 of @_discomfort_weapon_@
 
-w:3
-of @_mental_illness_weapon_@
-
 w:4
 of the @_item_name_@
 
@@ -161,6 +161,15 @@ of @_destiny_name_@
 w:9
 of @god_name@'s @divine_esteem@
 
+w:4
+of the @_verbing_@ Gods
+
+w:4
+of the @_adjective_@ God
+
+w:2
+of @god_name@, @_verbing_@
+
 # hardcoded keywords
 w:1
 of @god_name@
@@ -168,12 +177,10 @@ of @god_name@
 ######################################################
 # 2. ARMOUR
 ######################################################
-robe
-
-@armour@
 %%%%
-body armour
+talisman
 
+# TODO?
 @armour@
 %%%%
 armour
@@ -229,9 +236,6 @@ of the @_adjective_@ @_critter_name_@
 w:5
 of @_evil_being_@
 
-w:5
-of @_mental_illness_armour_@
-
 of @_discomfort_and_inaction_@
 
 of @_game_name_@
@@ -266,6 +270,15 @@ of @_number_or_qualifier_@ @_thing_names_@
 w:20
 of @god_name@'s @divine_esteem@
 
+w:4
+of the @_verbing_@ Gods
+
+w:4
+of the @_adjective_@ God
+
+w:2
+of @god_name@, @_verbing_@
+
 # hardcoded keywords
 w:1
 of @god_name@
@@ -297,9 +310,6 @@ of @_balance_or_order_@
 
 w:14
 of @_philosophy_name_@
-
-w:7
-of @_mental_illness_weapon_@
 
 of @other_weapon_name@
 
@@ -334,6 +344,15 @@ of @_sky_or_light_@
 w:20
 of @god_name@'s @divine_esteem@
 
+w:4
+of the @_verbing_@ Gods
+
+w:4
+of the @_adjective_@ God
+
+w:2
+of @god_name@, @_verbing_@
+
 of Xom's @_xom_esteem_@
 
 w:7
@@ -354,14 +373,23 @@ of @_number_or_qualifier_@ @_verbing_@ @_thing_names_@
 Trog weapon
 
 # names containing battle and death are more likely
-w:25
+w:20
 of @_power_or_anger_@
 
-w:25
+w:5
+of @_adjective_@ @_power_or_anger_@
+
+w:20
 of @_battle_or_war_@
 
-w:25
+w:5
+of the @_verbing_@ @_battle_or_war_@
+
+w:20
 of @death_or_doom@
+
+w:5
+of @_adjective_@ @death_or_doom@
 
 w:7
 of @_strategy_name_@
@@ -413,8 +441,6 @@ of @_number_or_qualifier_@ @_thing_names_@
 
 of @_discomfort_weapon_@
 
-of @_mental_illness_weapon_@
-
 of the @_item_name_@
 
 w:15
@@ -446,6 +472,9 @@ of @player_name@'s @_valour_name_@
 
 w:3
 of Okawaru's @divine_esteem@
+
+w:1
+of Okawaru, @_verbing_@
 
 # and bonus probability for some of the more harmless themes
 of @_strategy_or_justice_@
@@ -532,6 +561,9 @@ w:2
 of Xom's @divine_esteem@
 
 w:2
+"Xom, @_verbing_@ and @_verbing_@"
+
+w:2
 of the @_verbing_@ @_fruit_name_@
 
 # uses the long name
@@ -572,6 +604,9 @@ of Xom's @_xom_esteem_@
 w:2
 of Xom's @divine_esteem@
 
+w:2
+"@_adjective_@ Xom"
+
 # uses the long name
 w:1
 of @xom_name@
@@ -603,6 +638,9 @@ of Xom's @_xom_esteem_@
 
 w:2
 of Xom's @divine_esteem@
+
+w:2
+of @_verbing_@ Xom
 
 # uses the long name
 w:1
@@ -701,6 +739,9 @@ w:5
 
 w:5
 "I Knew You'd Do That"
+
+w:5
+"I Foresaw This"
 
 w:5
 of Ouranomancy
@@ -919,7 +960,7 @@ Curse-Bearer
 Soothsayer
 
 Unmoving One
-%%%
+%%%%
 _ashenzari_heavens_
 
 Cosmos
@@ -1168,6 +1209,8 @@ jade
 pearl
 
 tiger eye
+
+ametrine
 %%%%
 ######################################################
 # Jewellery appearance
@@ -1278,6 +1321,8 @@ lapis lazuli
 
 glass
 
+carnelian
+
 w:2
 gossamer
 %%%%
@@ -1322,8 +1367,6 @@ garnet
 ruby
 
 jade
-
-ruby
 
 crystal
 

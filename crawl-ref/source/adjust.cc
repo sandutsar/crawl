@@ -86,7 +86,7 @@ static void _adjust_spell()
 
     // Select starting slot
     mprf(MSGCH_PROMPT, "Adjust which spell? ");
-    int keyin = list_spells(false, false, false, "Adjust which spell?");
+    int keyin = list_spells(false, false, false, "adjust");
 
     if (!isaalpha(keyin))
     {
@@ -120,8 +120,13 @@ static void _adjust_spell()
         }
         // FIXME: It would be nice if the user really could select letters
         // without spells from this menu.
+        // XX this does not really work well with new menu code
         if (keyin == '?' || keyin == '*')
-            keyin = list_spells(true, false, false, "Adjust to which letter?");
+        {
+            keyin = list_spells(true, false, false, "adjust it to");
+            if (keyin < 'a' || keyin > 'Z')
+                continue;
+        }
     }
 
     const int input_2 = keyin;
@@ -170,7 +175,7 @@ static void _adjust_ability()
 
     char old_key = static_cast<char>(talents[selected].hotkey);
 
-    mprf_nocap("%c - %s", old_key, ability_name(talents[selected].which));
+    mprf_nocap("%c - %s", old_key, ability_name(talents[selected].which).c_str());
 
     const int index1 = letter_to_index(old_key);
 
@@ -189,13 +194,7 @@ static void _adjust_ability()
 
 void swap_inv_slots(int from_slot, int to_slot, bool verbose)
 {
-    int new_launcher_quiver = -1;
     int new_quiver = -1;
-    if (you.launcher_action.item_is_quivered(from_slot))
-        new_launcher_quiver = to_slot;
-    else if (you.launcher_action.item_is_quivered(to_slot))
-        new_launcher_quiver = from_slot;
-
     if (you.quiver_action.item_is_quivered(from_slot))
         new_quiver = to_slot;
     else if (you.quiver_action.item_is_quivered(to_slot))
@@ -222,10 +221,9 @@ void swap_inv_slots(int from_slot, int to_slot, bool verbose)
             you.equip[i] = from_slot;
     }
 
-    if (new_launcher_quiver >= 0)
-        you.launcher_action.replace(quiver::slot_to_action(new_launcher_quiver, true));
     if (new_quiver >= 0)
         you.quiver_action.replace(quiver::slot_to_action(new_quiver, true));
+    you.m_quiver_history.maybe_swap(from_slot, to_slot);
 
     if (verbose)
     {

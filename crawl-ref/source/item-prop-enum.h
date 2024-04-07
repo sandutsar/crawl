@@ -49,6 +49,9 @@ enum armour_type
     ARM_KITE_SHIELD,
     ARM_TOWER_SHIELD,
     ARM_LAST_SHIELD = ARM_TOWER_SHIELD,
+#if TAG_MAJOR_VERSION > 34
+    ARM_ORB,
+#endif
 
 #if TAG_MAJOR_VERSION == 34
     ARM_CRYSTAL_PLATE_ARMOUR,
@@ -109,6 +112,7 @@ enum armour_type
     ARM_QUICKSILVER_DRAGON_HIDE,
     ARM_QUICKSILVER_DRAGON_ARMOUR,
     ARM_SCARF,
+    ARM_ORB,
 #endif
 
     NUM_ARMOURS
@@ -122,7 +126,6 @@ enum armour_property_type
 
 const int SP_FORBID_EGO   = -1;
 const int SP_FORBID_BRAND = -1;
-const int SP_UNKNOWN_BRAND = 31; // seen_weapon/armour is a 32-bit bitfield
 
 // Be sure to update _debug_acquirement_stats and _str_to_ego to match.
 enum brand_type // item_def.special
@@ -141,7 +144,7 @@ enum brand_type // item_def.special
     SPWPN_PROTECTION,
     SPWPN_DRAINING,
     SPWPN_SPEED,
-    SPWPN_VORPAL,
+    SPWPN_HEAVY,
 #if TAG_MAJOR_VERSION == 34
     SPWPN_FLAME,   // ranged, only
     SPWPN_FROST,   // ranged, only
@@ -178,10 +181,10 @@ enum brand_type // item_def.special
 #endif
     SPWPN_WEAKNESS,
     SPWPN_VULNERABILITY,
+    SPWPN_FOUL_FLAME,
     SPWPN_DEBUG_RANDART,
     NUM_SPECIAL_WEAPONS,
 };
-COMPILE_CHECK(NUM_SPECIAL_WEAPONS <= SP_UNKNOWN_BRAND);
 
 enum corpse_type
 {
@@ -308,18 +311,17 @@ enum misc_item_type
     MISC_QUAD_DAMAGE, // Sprint only
 
     MISC_PHIAL_OF_FLOODS,
-#if TAG_MAJOR_VERSION == 34
     MISC_SACK_OF_SPIDERS,
-#endif
     MISC_ZIGGURAT,
 
     MISC_PHANTOM_MIRROR,
 #if TAG_MAJOR_VERSION == 34
     MISC_DECK_OF_ODDITIES,
-#endif
     MISC_XOMS_CHESSBOARD,
+#endif
     MISC_TIN_OF_TREMORSTONES,
     MISC_CONDENSER_VANE,
+    MISC_GRAVITAMBOURINE,
 
     NUM_MISCELLANY,
     MISC_DECK_UNKNOWN = NUM_MISCELLANY,
@@ -340,17 +342,18 @@ const vector<misc_item_type> misc_types =
 #endif
     MISC_LIGHTNING_ROD, MISC_PHIAL_OF_FLOODS,
     MISC_QUAD_DAMAGE,
-#if TAG_MAJOR_VERSION == 34
     MISC_SACK_OF_SPIDERS,
-#endif
     MISC_PHANTOM_MIRROR,
+#if TAG_MAJOR_VERSION == 34
     MISC_XOMS_CHESSBOARD,
+#endif
     MISC_ZIGGURAT,
 #if TAG_MAJOR_VERSION == 34
     MISC_BOTTLED_EFREET, MISC_BUGGY_EBONY_CASKET,
 #endif
     MISC_TIN_OF_TREMORSTONES,
     MISC_CONDENSER_VANE,
+    MISC_GRAVITAMBOURINE,
 };
 
 enum missile_type
@@ -368,6 +371,8 @@ enum missile_type
     MI_SLING_BULLET,
     MI_THROWING_NET,
     MI_BOOMERANG,
+
+    MI_SLUG,
 
     NUM_MISSILES,
     MI_NONE             // was MI_EGGPLANT... used for launch type detection
@@ -403,6 +408,28 @@ enum rune_type
     NUM_RUNE_TYPES
 };
 
+// Order roughly matches branch_type.
+enum gem_type
+{
+    GEM_DUNGEON,
+#if TAG_MAJOR_VERSION == 34
+    GEM_ORC,
+#endif
+    GEM_ELF,
+    GEM_LAIR,
+    GEM_SWAMP,
+    GEM_SHOALS,
+    GEM_SNAKE,
+    GEM_SPIDER,
+    GEM_SLIME,
+    GEM_VAULTS,
+    GEM_CRYPT,
+    GEM_TOMB,
+    GEM_DEPTHS,
+    GEM_ZOT,
+    NUM_GEM_TYPES
+};
+
 enum scroll_type
 {
     SCR_IDENTIFY,
@@ -423,7 +450,7 @@ enum scroll_type
 #endif
     SCR_IMMOLATION,
     SCR_BLINKING,
-    SCR_MAGIC_MAPPING,
+    SCR_REVELATION,
     SCR_FOG,
     SCR_ACQUIREMENT,
 #if TAG_MAJOR_VERSION == 34
@@ -433,14 +460,16 @@ enum scroll_type
 #if TAG_MAJOR_VERSION == 34
     SCR_RECHARGING,
     SCR_ENCHANT_WEAPON_III,
-#endif
     SCR_HOLY_WORD,
+#endif
     SCR_VULNERABILITY,
     SCR_SILENCE,
     SCR_AMNESIA,
 #if TAG_MAJOR_VERSION == 34
     SCR_CURSE_JEWELLERY,
 #endif
+    SCR_POISON,
+    SCR_BUTTERFLIES,
     NUM_SCROLLS
 };
 
@@ -483,11 +512,14 @@ enum special_armour_type
     SPARM_SHADOWS,
     SPARM_RAMPAGING,
     SPARM_INFUSION,
+    SPARM_LIGHT,
+    SPARM_RAGE,
+    SPARM_MAYHEM,
+    SPARM_GUILE,
+    SPARM_ENERGY,
     NUM_REAL_SPECIAL_ARMOURS,
     NUM_SPECIAL_ARMOURS,
 };
-// We have space for 32 brands in the bitfield.
-COMPILE_CHECK(NUM_SPECIAL_ARMOURS <= SP_UNKNOWN_BRAND);
 
 // Be sure to update _str_to_ego to match.
 enum special_missile_type // to separate from weapons in general {dlb}
@@ -538,7 +570,7 @@ enum stave_type
 #endif
     STAFF_FIRE,
     STAFF_COLD,
-    STAFF_POISON,
+    STAFF_ALCHEMY,
 #if TAG_MAJOR_VERSION == 34
     STAFF_ENERGY,
 #endif
@@ -617,7 +649,7 @@ enum weapon_type
 #endif
 
 #if TAG_MAJOR_VERSION > 34
-    WPN_HAND_CROSSBOW,
+    WPN_HAND_CANNON,
 #endif
     WPN_ARBALEST,
 #if TAG_MAJOR_VERSION > 34
@@ -625,11 +657,13 @@ enum weapon_type
 #endif
 
     WPN_SHORTBOW,
+#if TAG_MAJOR_VERSION > 34
+    WPN_ORCBOW,
+#endif
     WPN_LONGBOW,
 
 #if TAG_MAJOR_VERSION > 34
-    WPN_HUNTING_SLING,
-    WPN_FUSTIBALUS,
+    WPN_SLING,
 #endif
 
     WPN_DEMON_WHIP,
@@ -641,14 +675,16 @@ enum weapon_type
     WPN_TRIPLE_SWORD,
 
     WPN_DEMON_TRIDENT,
+#if TAG_MAJOR_VERSION == 34
     WPN_SCYTHE,
+#endif
 
     WPN_STAFF,          // Just used for the weapon stats for magical staves.
     WPN_QUARTERSTAFF,
     WPN_LAJATANG,
 
 #if TAG_MAJOR_VERSION == 34
-    WPN_HUNTING_SLING,
+    WPN_SLING,
 
     WPN_BLESSED_FALCHION,
     WPN_BLESSED_LONG_SWORD,
@@ -665,10 +701,11 @@ enum weapon_type
 
 #if TAG_MAJOR_VERSION == 34
     WPN_FUSTIBALUS,
-    WPN_HAND_CROSSBOW,
+    WPN_HAND_CANNON,
     WPN_TRIPLE_CROSSBOW,
 
     WPN_CUTLASS,
+    WPN_ORCBOW,
 #endif
 
     NUM_WEAPONS,
@@ -678,9 +715,6 @@ enum weapon_type
     WPN_UNKNOWN,
     WPN_RANDOM,
     WPN_VIABLE,
-
-// thrown weapons (for hunter weapon selection) - rocks, javelins, boomerangs
-    WPN_THROWN,
 };
 
 enum weapon_property_type
@@ -702,8 +736,8 @@ enum vorpal_damage_type
     DAM_WHIP            = 0x0008,       // whip slashing
     DAM_MAX_TYPE        = DAM_WHIP,
 
-    // These are used for vorpal weapon descriptions. You shouldn't set
-    // more than one of these.
+    // These were used for vorpal weapon descriptions, many years ago.
+    // You shouldn't set more than one of these.
     DVORP_NONE          = 0x0000,       // used for non-melee weapons
     DVORP_CRUSHING      = 0x1000,
     DVORP_SLICING       = 0x2000,
@@ -761,6 +795,10 @@ enum wand_type
     WAND_CLOUDS_REMOVED,
     WAND_SCATTERSHOT_REMOVED,
 #endif
+    WAND_LIGHT,
+    WAND_QUICKSILVER,
+    WAND_ROOTS,
+    WAND_WARPING,
     NUM_WANDS
 };
 
@@ -793,3 +831,38 @@ enum food_type
     NUM_FOODS
 };
 #endif
+
+enum item_set_type
+{
+    ITEM_SET_HEX_WANDS,
+    ITEM_SET_BEAM_WANDS,
+    ITEM_SET_BLAST_WANDS,
+    ITEM_SET_ALLY_SCROLLS,
+    ITEM_SET_AREA_MISCELLANY,
+    ITEM_SET_ALLY_MISCELLANY,
+    ITEM_SET_CONTROL_MISCELLANY,
+    NUM_ITEM_SET_TYPES
+};
+
+enum talisman_type
+{
+    TALISMAN_BEAST,
+    TALISMAN_MAW,
+    TALISMAN_SERPENT,
+    TALISMAN_BLADE,
+    TALISMAN_STATUE,
+    TALISMAN_DRAGON,
+    TALISMAN_DEATH,
+    TALISMAN_STORM,
+    TALISMAN_FLUX,
+    NUM_TALISMANS,
+};
+
+enum special_gizmo_type
+{
+    SPGIZMO_NORMAL,
+    SPGIZMO_MANAREV,
+    SPGIZMO_GADGETEER,
+    SPGIZMO_PARRYREV,
+    SPGIZMO_AUTODAZZLE,
+};

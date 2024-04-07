@@ -1,6 +1,7 @@
 define(["jquery", "comm", "client", "./ui", "./enums", "./cell_renderer",
-    "./util", "./scroller", "./tileinfo-main", "./tileinfo-gui", "./tileinfo-player"],
-function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
+    "./util", "./scroller", "./tileinfo-main", "./tileinfo-gui",
+    "./tileinfo-player", "./options"],
+function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player, options) {
     "use strict";
 
     var describe_scale = 2.0;
@@ -8,19 +9,12 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
     function fmt_body_txt(txt)
     {
         return txt
-            // preserve all leading spaces
-            .split("\n")
-            .map(function (s) { return s.replace(/^\s+/, function (m)
-                    {
-                        // TODO: or mark as preformatted? something else?
-                        return m.replace(/\s/g, "&nbsp;");
-                    }).trim();
-                })
-            .join("\n")
             // convert double linebreaks into paragraph markers
             .split("\n\n")
-            .map(function (s) { return "<p>" + s + "</p>"; })
-            .filter(function (s) { return s !== "<p></p>"; })
+            .map(function (s) {
+                return "<pre>" + util.formatted_string_to_html(s) + "</pre>";
+            })
+            .filter(function (s) { return s !== "<pre></pre>"; })
             .join("")
             // replace single linebreaks with manual linebreaks
             .split("\n")
@@ -39,6 +33,13 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
     function _fmt_spells_list(root, spellset, colour)
     {
         var $container = root.find("#spellset_placeholder");
+        // XX this container only seems to be added if there are spells, do
+        // we actually need to remove it again?
+        if ($container.length === 0 && spellset.length !== 0)
+        {
+            root.prepend("<div class='fg4'>Buggy spellset!</div>");
+            return;
+        }
         $container.attr("id", "").addClass("menu_contents spellset");
         if (spellset.length === 0)
         {
@@ -155,7 +156,7 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
                 var text = feat.body;
                 if (feat.quote)
                      text += "\n\n" + feat.quote;
-                $feat.find(".body").html(text);
+                $feat.find(".body").html(util.formatted_string_to_html(text));
             }
             else
                 $feat.find(".body").remove();
@@ -170,11 +171,64 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
                 feat.tile.ymax, false, describe_scale);
             $popup.append($feat);
         });
+        if (desc.actions)
+        {
+            $popup.append("<div class=actions></div>");
+            $popup.find(".actions").html(clickify_actions(desc.actions));
+        }
+
         var s = scroller($popup[0]);
         $popup.on("keydown keypress", function (event) {
-            scroller_handle_key(s, event);
+            var key = String.fromCharCode(event.which);
+            if (key != "<" && key != ">") // XX not always
+                scroller_handle_key(s, event);
         });
         return $popup;
+    }
+
+    // Given some string like "e(v)oke", produce a span with the `data-hotkey`
+    // attribute set on that span. This auto-enables clicking. This will
+    // handle both a final period, and a sequence of prefix words that do not
+    // have a hotkey marked in them.
+    // TODO: it might be more robust to produce structured info on the server
+    // side...
+    function clickify_action(action_text)
+    {
+        var suffix = "";
+        var prefix = "";
+        // makes some assumptions about how this is joined...see describe.cc
+        // _actions_desc.
+        if (action_text.endsWith(".")) // could be more elegant...
+        {
+            suffix = ".";
+            action_text = action_text.slice(0, -1);
+        }
+        if (action_text.startsWith("or "))
+        {
+            prefix = "or ";
+            action_text = action_text.substr(3);
+        }
+        var hotkeys = action_text.match(/\(.\)/); // very inclusive for the key name
+        var data_attr = ""
+        if (hotkeys)
+            data_attr = " data-hotkey='" + hotkeys[0][1] + "'";
+        return prefix
+            + "<span" + data_attr + ">" + action_text + "</span>"
+            + suffix;
+    }
+
+    // Turn a list of actions like that found in the describe item popup into
+    // clickable links.
+    function clickify_actions(actions_text)
+    {
+        // assumes that the list is joined via ", ", including the final
+        // element. (I.e. this will break without the Oxford comma.)
+        var words = actions_text.split(", ");
+        var linkized = [];
+        words.forEach(function(w) {
+            linkized.push(clickify_action(w));
+        });
+        return linkized.join(", ");
     }
 
     function describe_item(desc)
@@ -188,8 +242,8 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         $popup.on("keydown keypress", function (event) {
             scroller_handle_key(s, event);
         });
-        if (desc.actions !== "")
-            $popup.find(".actions").html(desc.actions);
+        if (desc.actions)
+            $popup.find(".actions").html(clickify_actions(desc.actions));
         else
             $popup.find(".actions").remove();
 
@@ -214,7 +268,7 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         if (parts == null || parts.length != 4)
             return fmt_body_txt(desc);
         parts[2] = parts[2].replace(/ /g, '&nbsp;');
-        return fmt_body_txt(parts[1]+parts[2]+parts[3])
+        return fmt_body_txt(parts[1]) + parts[2] + fmt_body_txt(parts[3]);
     }
 
     function describe_spell(desc)
@@ -274,7 +328,7 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         var $body = $popup.find(".body");
         var $footer = $popup.find(".footer");
         var $muts = $body.children().first(), $vamp = $body.children().last();
-        $muts.html(fmt_body_txt(util.formatted_string_to_html(desc.mutations)));
+        $muts.html(fmt_body_txt(desc.mutations));
         var s = scroller($muts[0]);
         $popup.on("keydown keypress", function (event) {
             scroller_handle_key(s, event);
@@ -369,7 +423,7 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
                 +power+"</div><div>"+cost+"</div></div>");
         }
 
-        desc.powers = fmt_body_txt(util.formatted_string_to_html(desc.powers));
+        desc.powers = fmt_body_txt(desc.powers);
         if (desc.info_table.length !== "")
         {
             desc.powers += "<div class=tbl>"
@@ -379,7 +433,7 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         $panes.eq(1).html(desc.powers);
 
         $panes.eq(2).html(
-                    fmt_body_txt(util.formatted_string_to_html(desc.wrath)));
+                    fmt_body_txt(desc.wrath));
         if (use_extra_pane)
         {
             $panes.eq(3).html("<div class=tbl>"
@@ -491,13 +545,14 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         else if (desc.fg_idx > 0 && desc.fg_idx <= main.MAIN_MAX)
         {
             renderer.draw_foreground(0, 0, { t: {
-                fg: { value: desc.fg_idx }, bg: 0,
+                fg: { value: desc.fg_idx }, bg: 0, icons: [],
             }}, describe_scale);
         }
 
         renderer.draw_foreground(0, 0, { t: {
             fg: enums.prepare_fg_flags(desc.flag),
             bg: 0,
+            icons: desc.icons,
         }}, describe_scale);
 
         for (var i = 0; i < $panes.length; i++)
@@ -631,10 +686,14 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
 
     function scroller_scroll_page(scroller, dir)
     {
-        // var line_height = scroller_line_height(scroller);
+        var line_height = scroller_line_height(scroller);
         var contents = $(scroller.scrollElement);
-        var page_shift = contents[0].getBoundingClientRect().height;
-        // page_shift = Math.floor(page_shift / line_height) * line_height;
+        // XX this is a bit weird, maybe context[0] is the wrong thing to use?
+        // The -24 is to compensate for the top/bottom shades. In practice, the
+        // top line ends up a bit in the shade in long docs, possibly it should
+        // be adjusted for.
+        var page_shift = contents[0].getBoundingClientRect().height - 24;
+        page_shift = Math.floor(page_shift / line_height) * line_height;
         contents[0].scrollTop += page_shift * dir;
         update_server_scroll();
     }
@@ -699,7 +758,6 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
     {
         var $popup = $(".templates > .formatted-scroller").clone();
         var $body = $popup.children(".body");
-        var $more = $popup.children(".more");
         var body_html = util.formatted_string_to_html(desc.text);
         if (desc.highlight !== "")
         {
@@ -711,7 +769,20 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         }
         $popup.attr("data-tag", desc.tag);
         $body.html(body_html);
-        $more.html(util.formatted_string_to_html(desc.more));
+        if (desc.more)
+            $popup.children(".more").html(util.formatted_string_to_html(desc.more));
+        else
+            $popup.children(".more").remove();
+
+        // XX why do some layouts use a span inside of a div, some just use
+        // the div? (Answer remains unclear to me, but something about
+        // preformatting + nested spans did mess this up when I tried to use
+        // a template span here)
+        if (desc.title)
+            $popup.children(".header").html(util.formatted_string_to_html(desc.title));
+        else
+            $popup.children(".header").remove();
+
         var s = scroller($body[0]);
         var scroll_elem = s.scrollElement;
         scroll_elem.addEventListener("scroll", scroller_onscroll);
@@ -719,6 +790,13 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
             if (event.which !== 36 || desc.tag !== "help")
                 scroller_handle_key(s, event);
         });
+        if (desc.easy_exit && options.get("tile_web_mouse_control"))
+        {
+            $popup.on("click", function () {
+                // XX a bit ad hoc
+                comm.send_message("key", { keycode: 27 });
+            });
+        }
         return $popup;
     }
 
@@ -814,9 +892,14 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
                     $button.append($canvas);
                 }
                 $.each(button.labels || [button.label], function (i, label) {
+                    // TODO: this has somewhat weird behavior if multiple spans
+                    // are produced from the formatted string...should they
+                    // really have a flex-grow property?
                     var $lbl = $(util.formatted_string_to_html(label)).css("flex-grow", "1");
                     $button.append($lbl);
                 });
+                // at least remove empty spans because of the above issue:
+                $button.find("span:empty").remove();
                 $button.attr("style", "grid-row:"+(button.y+1)+"; grid-column:"+(button.x+1)+";");
                 $descriptions.append("<span class='pane'> " + button.description + "</span>");
                 $button.attr("data-description-index", $descriptions.children().length - 1);
@@ -874,7 +957,7 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
     {
         var $popup = $(".templates > .game-over").clone();
         $popup.find(".header > span").html(desc.title);
-        $popup.children(".body").html(fmt_body_txt(util.formatted_string_to_html(desc.body)));
+        $popup.children(".body").html(fmt_body_txt(desc.body));
         var s = scroller($popup.children(".body")[0]);
         $popup.on("keydown keypress", function (event) {
             scroller_handle_key(s, event);
@@ -938,8 +1021,19 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
 
     function recv_ui_push(msg)
     {
+        var popup = null
         var handler = ui_handlers[msg.type];
-        var popup = handler ? handler(msg) : $("<div>Unhandled UI type "+msg.type+"</div>");
+        try
+        {
+            popup = handler
+                ? handler(msg)
+                : $("<div>Unhandled UI type " + msg.type + "</div>");
+        }
+        catch (err)
+        {
+            console.log(err);
+            popup = $("<div>Buggy UI of type " + msg.type + "</div>");
+        }
         ui.show_popup(popup, msg["ui-centred"], msg.generation_id);
     }
 
@@ -948,12 +1042,19 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         ui.hide_popup();
     }
 
+    var ui_stack_handled = false;
+
     function recv_ui_stack(msg)
     {
         if (!client.is_watching())
             return;
+        // only process once on load
+        if (ui_stack_handled)
+            return;
+
         for (var i = 0; i < msg.items.length; i++)
             comm.handle_message(msg.items[i]);
+        ui_stack_handled = true;
     }
 
     function recv_ui_state(msg)
@@ -990,6 +1091,7 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
 
     function ui_layouts_cleanup()
     {
+        ui_stack_handled = false;
         if (update_server_scroll_timeout)
         {
             clearTimeout(update_server_scroll_timeout);

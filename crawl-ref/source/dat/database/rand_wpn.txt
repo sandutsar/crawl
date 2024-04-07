@@ -29,6 +29,8 @@ Dominance
 
 Domination
 
+Friendship
+
 Glory
 
 Grandeur
@@ -504,6 +506,8 @@ Shark
 
 # birds
 
+Cardinal
+
 Dove
 
 Hawk
@@ -723,8 +727,6 @@ Distraction
 
 Extremism
 
-Forced Transition
-
 Havoc
 
 Imbalance
@@ -907,6 +909,42 @@ the Revolution
 
 the Silent Majority
 
+# Anglo-American common law, though trying not to overlap with
+# _justice_name_: History tells us that law and justice are only
+# tangentially related, anyway.
+
+Actus Reus
+
+Ad Valorem
+
+Adverse Possession
+
+Corpus Delicti
+
+Eminent Domain
+
+In Flagrante Delicto
+
+Ipse Dixit
+
+Locus Delicti
+
+Malum In Se
+
+Malum Prohibitum
+
+Mens Rea
+
+Nolo Contendere
+
+Non Obstante Veredicto
+
+Obiter Dictum
+
+Res Ipsa Loquitur
+
+Res Judicata
+
 %%%%
 _place_name_
 
@@ -1024,38 +1062,6 @@ Unpleasantness
 Urgency
 
 %%%%
-_mental_illness_weapon_
-
-Compulsion
-
-Egomania
-
-Exhibitionism
-
-Fatigue
-
-Fixation
-
-Insomnia
-
-Megalomania
-
-Neurosis
-
-Obsession
-
-Oenomania
-
-Perfectionism
-
-Psychosis
-
-Pyromania
-
-Satyriasis
-
-Suicidal Tendencies
-%%%%
 _philosophy_or_science_
 
 @_philosophy_name_@
@@ -1112,11 +1118,15 @@ Heresy
 
 Idealism
 
+Kathenotheism
+
 Levity
 
 Liberalism
 
 Limitation
+
+Maltheism
 
 Monotheism
 

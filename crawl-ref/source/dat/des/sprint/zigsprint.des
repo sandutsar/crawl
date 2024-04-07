@@ -35,9 +35,9 @@
 -- start TAG_MAJOR_VERSION == 34
 function callback.zig_tele(data, triggerable, triggerer, marker, ev)
   local position = dgn.point(marker:pos())
-  my_slaves = dgn.find_marker_positions_by_prop("teleport_spot",
-                                                data.teleport_spot)
-  you.teleport_to(my_slaves[1].x, my_slaves[1].y)
+  my_replicas = dgn.find_marker_positions_by_prop("teleport_spot",
+                                                  data.teleport_spot)
+  you.teleport_to(my_replicas[1].x, my_replicas[1].y)
   crawl.mpr("Your surroundings seem different!")
   if data.teleport_spot < 28 then
     crawl.mpr("Welcome to arena " .. data.teleport_spot .. ".")
@@ -58,9 +58,9 @@ function callback.zig_message(data, triggerable, triggerer, marker, ev)
 end
 
 function callback.make_hatch(data, triggerable, triggerer, marker, ev)
-    for slave in iter.slave_iterator("hatch", 1) do
-        dgn.terrain_changed(slave.x, slave.y, "exit_dungeon", false)
-        dgn.apply_area_cloud(slave.x, slave.y, 1, 10, 1, 9, "purple smoke", "other", -1)
+    for replica in iter.replica_iterator("hatch", 1) do
+        dgn.terrain_changed(replica.x, replica.y, "exit_dungeon", false)
+        dgn.apply_area_cloud(replica.x, replica.y, 1, 10, 1, 9, "purple smoke", "other", -1)
     end
     crawl.mpr("<magenta>An exit appears before you!</magenta>")
 end
@@ -98,7 +98,7 @@ function setup_room(e, id)
 e.kitem("1 = superb_item ident:all w:590 /\
             potion of heal wounds ident:all q:4 w:3 /\
             potion of haste ident:all q:4 w:3 /\
-            scroll of fog w:1 ident:all / scroll of holy word w:1 ident:all /\
+            scroll of fog w:1 ident:all /\
             potion of might ident:all w:2 /\
             scroll of acquirement q:1 w:1 ident:all /\
             scroll of enchant weapon ident:all q:4 w:2 /\
@@ -124,7 +124,7 @@ function choose_mset_1(e)
   local rnd = crawl.random2(132)
 -- Slime
   if rnd < 9 then
-    e.kmons("1 = jelly w:15 / endoplasm / slime creature w:5 / floating eye w:5 / golden eye w:5")
+    e.kmons("1 = jelly w:15 / endoplasm / slime creature w:5 / glass eye w:5 / golden eye w:5")
 -- Snake
   elseif rnd < 19 then
     e.kmons("1 = ball python / adder / water moccasin w:5 / naga w:2")
@@ -137,7 +137,7 @@ function choose_mset_1(e)
     e.kmons("1 = scorpion w:15 / jumping spider w:5 / tarantella w:5")
 -- Crypt
   elseif rnd < 49 then
-    e.kmons("1 = zombie / skeleton / wight w:5 / necrophage / phantom")
+    e.kmons("1 = zombie / skeleton / wight w:5 / weeping skull / phantom")
 -- Abyss
   elseif rnd < 59 then
     e.kmons("1 = lesser demon / place:Abyss w:3")
@@ -211,7 +211,7 @@ function choose_mset_2(e)
 -- Slime
   if rnd < 9 then
     e.kmons("1 = jelly w:15 / endoplasm / slime creature /\
-               floating eye w:5 / golden eye w:5 /\
+               glass eye w:5 / golden eye w:5 /\
                eye of devastation w:5 / shining eye w:5")
 -- Snake
   elseif rnd < 19 then
@@ -228,7 +228,7 @@ function choose_mset_2(e)
                wolf spider w:5 / redback w:5")
 -- Crypt
   elseif rnd < 44 then
-    e.kmons("1 = zombie w:20 / skeleton w:20 / wight / necrophage / phantom")
+    e.kmons("1 = zombie w:20 / skeleton w:20 / wight / weeping skull / phantom")
 -- Abyss
   elseif rnd < 54 then
     e.kmons("1 = lesser demon / place:Abyss w:6")
@@ -306,7 +306,7 @@ function choose_mset_3(e)
 -- Slime
   if rnd < 9 then
     e.kmons("1 = jelly w:15 / endoplasm / slime creature w:30 /\
-               floating eye w:2 / golden eye w:5 / quicksilver ooze w:2 /\
+               glass eye w:2 / golden eye w:5 / quicksilver ooze w:2 /\
                eye of devastation w:5 / shining eye w:5 / acid blob w:5 /\
                rockslime / azure jelly w:5 / great orb of eyes w:5 /\
                glowing orange brain w:2")
@@ -317,14 +317,14 @@ function choose_mset_3(e)
                anaconda w:5 / guardian serpent")
 -- Lair
   elseif rnd < 19 then
-    e.kmons("1 =  place:Lair:2 / place:Lair:4 / place:Lair:$ w:5")
+    e.kmons("1 =  place:Lair:1 / place:Lair:3 / place:Lair:$ w:5")
 -- Spider
   elseif rnd < 24 then
     e.kmons("1 = place:Spider:$ w:70 / hornet")
 -- Crypt
   elseif rnd < 34 then
     e.kmons("1 = zombie / skeleton / skeletal warrior w:5 / ghoul w:2 /\
-                 necrophage w:5 / vampire w:5 / vampire mage w:5 /\
+                 laughing skull w:5 / vampire w:5 / vampire mage w:5 /\
                  vampire knight w:5 / lich w:2 / ancient lich w:1 / shadow /\
                  wight / necromancer")
 -- Abyss
@@ -435,7 +435,7 @@ local rnd = crawl.random2(142)
 -- Slime
   if rnd < 9 then
     e.kmons("1 = jelly w:5 / slime creature w:30 /\
-               floating eye w:2 / golden eye w:4 / quicksilver ooze w:2 /\
+               glass eye w:2 / golden eye w:4 / quicksilver ooze w:2 /\
                eye of devastation w:5 / shining eye w:4 / acid blob /\
                rockslime / azure jelly / great orb of eyes w:4 /\
                glowing orange brain w:2")
@@ -454,7 +454,7 @@ local rnd = crawl.random2(142)
 -- Crypt
   elseif rnd < 34 then
     e.kmons("1 = zombie / skeleton / skeletal warrior / ghoul w:7 /\
-                 necrophage w:5 / vampire w:5 / vampire mage w:5 /\
+                 laughing skull / vampire mage w:5 /\
                  vampire knight / lich w:5 / ancient lich w:2 / shadow /\
                  wight / necromancer")
 -- Abyss
@@ -732,7 +732,9 @@ KITEM:    B = plate armour mundane ident:all plus:5, \
               crystal plate armour mundane ident:all plus:5
 KITEM:    C = buckler mundane ident:all plus:3, \
               kite shield mundane ident:all plus:3, \
-              tower shield mundane ident:all plus:3
+              tower shield mundane ident:all plus:3, \
+              orb ego:guile, \
+              orb ego:mayhem
 KITEM:    D = broad axe mundane ident:all plus:5, \
               battleaxe mundane ident:all plus:5, \
               executioner's axe mundane ident:all plus:5
@@ -750,16 +752,13 @@ KITEM:    H = demon blade mundane ident:all plus:5, \
               great sword mundane ident:all plus:5, \
               triple sword mundane ident:all plus:5
 KITEM:    I = lajatang mundane ident:all plus:5
-KITEM:    J = hand crossbow mundane ident:all plus:5, \
-              bolt q:1000 mundane ident:all, \
+KITEM:    J = hand cannon mundane ident:all plus:5, \
               arbalest mundane ident:all plus:5, \
               triple crossbow mundane ident:all plus:5, \
               shortbow mundane ident:all plus:5, \
-              arrow q:1000 mundane ident:all, \
+              orcbow mundane ident:all plus:5, \
               longbow mundane ident:all plus:5, \
-              hunting sling mundane ident:all plus:5, \
-              fustibalus mundane ident:all plus:5, \
-              sling bullet q:1000 mundane ident:all
+              sling mundane ident:all plus:5
 KITEM:    K = potion of curing q:9 ident:all, \
               potion of heal wounds q:9 ident:all, \
               potion of berserk rage q:2 ident:all, \
@@ -773,10 +772,9 @@ KITEM:    K = potion of curing q:9 ident:all, \
 KITEM:    L = scroll of blinking q:3 ident:all, \
               scroll of fear q:2 ident:all, \
               scroll of identify q:5 ident:all, \
-              scroll of holy word q:1 ident:all, \
               scroll of fog q:7 ident:all, \
               scroll of amnesia q:4 ident:all
-KITEM:    N = wand of acid ident:all charges:7, \
+KITEM:    N = any beam wand ident:all charges:7, \
               wand of iceblast ident:all charges:7, \
               wand of mindburst ident:all charges:7
 KITEM:    P = ring of strength ident:all plus:6, \
@@ -802,7 +800,7 @@ KITEM:    T = storm_bow ident:all, \
               plutonium_sword ident:all, \
               devastator ident:all, \
               firestarter ident:all
-KITEM:    S = lightning rod ident:all
+KITEM:    S = beast talisman, maw talisman, blade talisman, serpent talisman
 KFEAT:    ^ = granite_statue
 KFEAT:    & = granite_statue
 COLOUR:   & = magenta

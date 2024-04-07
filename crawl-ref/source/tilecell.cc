@@ -21,6 +21,7 @@ void packed_cell::clear()
     bg = 0;
     cloud = 0;
     map_knowledge.clear();
+    icons.clear();
 
     flv.floor_idx = 0;
     flv.wall_idx = 0;
@@ -35,6 +36,7 @@ void packed_cell::clear()
     is_silenced      = false;
     halo             = HALO_NONE;
     is_sanctuary     = false;
+    is_blasphemy     = false;
     is_liquefied     = false;
     mangrove_water = false;
     orb_glow         = 0;
@@ -43,9 +45,6 @@ void packed_cell::clear()
     travel_trail     = 0;
     quad_glow        = 0;
     disjunct         = 0;
-#if TAG_MAJOR_VERSION == 34
-    heat_aura        = 0;
-#endif
 }
 
 bool packed_cell::operator ==(const packed_cell &other) const
@@ -59,6 +58,7 @@ bool packed_cell::operator ==(const packed_cell &other) const
     if (is_silenced != other.is_silenced) return false;
     if (halo != other.halo) return false;
     if (is_sanctuary != other.is_sanctuary) return false;
+    if (is_blasphemy != other.is_blasphemy) return false;
     if (is_liquefied != other.is_liquefied) return false;
     if (mangrove_water != other.mangrove_water) return false;
     if (awakened_forest != other.awakened_forest) return false;
@@ -68,9 +68,6 @@ bool packed_cell::operator ==(const packed_cell &other) const
     if (travel_trail != other.travel_trail) return false;
     if (quad_glow != other.quad_glow) return false;
     if (disjunct != other.disjunct) return false;
-#if TAG_MAJOR_VERSION == 34
-    if (heat_aura != other.heat_aura) return false;
-#endif
 
     if (num_dngn_overlay != other.num_dngn_overlay) return false;
     for (int i = 0; i < num_dngn_overlay; ++i)
@@ -476,17 +473,12 @@ static void _pack_wall_shadows(const coord_def &gc, crawl_view_buffer& vbuf,
 
 static bool _is_seen_slimy_wall(const coord_def& gc, crawl_view_buffer &vbuf)
 {
-    const auto feat = _safe_feat(gc, vbuf);
-
-    return feat == DNGN_SLIMY_WALL;
+    return _safe_feat(gc, vbuf) == DNGN_SLIMY_WALL;
 }
 
 static bool _is_seen_icy_wall(const coord_def& gc, crawl_view_buffer &vbuf)
 {
-    if (gc.x < 0 || gc.x >= vbuf.size().x || gc.y < 0 || gc.y >= vbuf.size().y)
-        return false;
-
-    return feat_is_wall(vbuf(gc).tile.map_knowledge.feat())
+    return feat_is_wall(_safe_feat(gc, vbuf))
            && vbuf(gc).tile.map_knowledge.flags & MAP_ICY;
 }
 

@@ -21,12 +21,12 @@ two other ways:
  +4  outstanding aptitude (learning twice as fast as at 0 aptitude)
  +5  exceptional aptitude
 
-There are four special values: HP, MP, Experience and Willpower:
+There are four special values: HP, MP, Experience and Willpower.
 - The HP value indicates the percentage of hit points gained per experience
   level, 100% being the Human standard.
 - The MP value indicates a fixed additive modifier to magic points.
 - The Experience value indicates how much experience has to be earned in
-  order to gain a new experience level, +1 being the Human standard. These
+  order to gain a new experience level, +0 being the Human standard. These
   values use the same scale as the skill aptitudes.
 - The Willpower value indicates resistance to many magical effects per
   experience level, +3 being the Human standard.
@@ -36,28 +36,28 @@ The abbreviations used for the skills are:
 General skills, Experience   Melee and Ranged Combat     Spellcasting and Magic
 --------------------------   -----------------------     ----------------------
 Arm - Armour                 Fgt - Fighting              Spc - Spellcasting
-Ddg - Dodging                SBl - Short Blades          Coj - Conjurations
-Sth - Stealth                LBl - Long Blades           Hex - Hexes
-Shd - Shields                M&F - Maces & Flails        Sum - Summonings
-                             Axs - Axes                  Nec - Necromancy
-Inv - Invocations            Pla - Polearms              Trl - Translocations
-Evo - Evocations             Stv - Staves                Trm - Transmutations
-                             UC  - Unarmed Combat
+Ddg - Dodging                                            Coj - Conjurations
+Sth - Stealth                M&F - Maces & Flails        Hex - Hexes
+Shd - Shields                Axs - Axes                  Sum - Summonings
+Shp - Shapeshifting          Pla - Polearms              Nec - Necromancy
+                             Stv - Staves                Trl - Translocations
+Inv - Invocations            UC  - Unarmed Combat
+Evo - Evocations                                         Fir - Fire Magic
+Thr - Throwing               SBl - Short Blades          Ice - Ice Magic
+                             LBl - Long Blades           Air - Air Magic
+HP  - hit points             Rng - Ranged Weapons        Ear - Earth Magic
+MP  - magic points                                       Alc - Alchemy
+Exp - experience
+WL  - willpower
 
-HP  - hit points             Thr - Throwing              Fir - Fire Magic
-MP  - magic points           Slg - Slings                Ice - Ice Magic
-Exp - experience             Bws - Bows                  Air - Air Magic
-WL  - willpower              Crb - Crossbows             Ear - Earth Magic
-                                                         Poi - Poison Magic
 
-
-                 Arm Ddg Sth Shd     Inv Evo        HP  MP Exp  WL
+                 Arm Ddg Sth Shd Shp     Inv Evo Thr    HP  MP Exp  WL
 ----------------------------------------------------------------------
 
 
-                 Fgt SBl LBl M&F Axs Pla Stv UC    Thr Slg Bws Crb
+                 Fgt     M&F Axs Pla Stv UC    SBl LBl Rng
 ----------------------------------------------------------------------
 
 
-                 Spc Coj Hex Sum Nec Trl Trm   Fir Ice Air Ear Poi
-------------------------------------------------------------------
+                 Spc Coj Hex Sum Nec Trl    Fir Ice Air Ear Alc
+---------------------------------------------------------------

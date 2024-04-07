@@ -2,8 +2,6 @@
 
 #include "attack.h"
 
-const int PPROJ_TO_HIT_DIV = 8;
-
 class ranged_attack : public attack
 {
 // Public Properties
@@ -13,8 +11,9 @@ public:
 
 // Public Methods
 public:
-    ranged_attack(actor *attacker, actor *defender, item_def *projectile,
-                  bool teleport, actor *blame = 0);
+    ranged_attack(actor *attacker, actor *defender,
+                  const item_def *wpn, const item_def *projectile,
+                  bool teleport, actor *blame = 0, bool mulched = false);
 
     // Applies attack damage and other effects.
     bool attack();
@@ -30,15 +29,18 @@ private:
 
     /* Combat Calculations */
     bool using_weapon() const override;
-    int weapon_damage() override;
-    int calc_base_unarmed_damage() override;
+    int weapon_damage() const override;
+    int calc_base_unarmed_damage() const override;
     int calc_mon_to_hit_base() override;
     int apply_damage_modifiers(int damage) override;
-    bool apply_damage_brand(const char *what = nullptr) override;
+    int player_apply_final_multipliers(int damage, bool aux = false) override;
+    int player_apply_postac_multipliers(int damage) override;
     special_missile_type random_chaos_missile_brand();
     bool dart_check(special_missile_type type);
     int dart_duration_roll(special_missile_type type);
     bool apply_missile_brand();
+    bool throwing() const;
+    bool clumsy_throwing() const;
 
     /* Weapon Effects */
     bool check_unrand_effects() override;
@@ -52,10 +54,10 @@ private:
     void set_attack_verb(int damage) override;
     void announce_hit() override;
 
+    bool mulch_bonus() const;
+
 private:
     const item_def *projectile;
     bool teleport;
-    int orig_to_hit;
-    bool should_alert_defender;
-    launch_retval launch_type;
+    bool mulched;
 };

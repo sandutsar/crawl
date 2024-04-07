@@ -51,7 +51,7 @@ void excommunication(bool voluntary = false, god_type new_god = GOD_NO_GOD);
 int excom_xp_docked();
 
 bool gain_piety(int pgn, int denominator = 1, bool should_scale_piety = true);
-void dock_piety(int pietyloss, int penance);
+void dock_piety(int pietyloss, int penance, bool no_lecture = false);
 void god_speaks(god_type god, const char *mesg);
 void lose_piety(int pgn);
 void set_piety(int piety);
@@ -63,7 +63,9 @@ bool player_can_join_god(god_type which_god, bool temp = true);
 void join_trog_skills(void);
 void join_religion(god_type which_god);
 void god_pitch(god_type which_god);
+void print_god_rejection(god_type which_god);
 god_type choose_god(god_type def_god = NUM_GODS);
+vector<god_type> get_ecu_gods(coord_def pos);
 
 static inline bool you_worship(god_type god)
 {
@@ -101,7 +103,6 @@ bool god_hates_eating(god_type god, monster_type mc);
 bool god_likes_spell(spell_type spell, god_type god);
 bool god_hates_spellcasting(god_type god);
 bool god_hates_spell(spell_type spell, god_type god, bool fake_spell = false);
-bool god_loathes_spell(spell_type spell, god_type god);
 string god_spell_warn_string(spell_type spell, god_type god);
 
 void initialize_ashenzari_props();
@@ -109,7 +110,9 @@ bool god_protects_from_harm();
 bool jiyva_is_dead();
 bool ignis_is_dead();
 void set_penance_xp_timeout();
-bool fedhas_protects(const monster* target);
+bool fedhas_protects(const monster &target);
+bool god_protects(const actor *agent, const monster &target, bool quiet=true);
+bool god_protects(const monster &target, bool quiet=true);
 bool god_protects(const actor *agent, const monster *target, bool quiet=true);
 bool god_protects(const monster *target, bool quiet=true);
 bool fedhas_neutralises(const monster& target);
@@ -121,14 +124,15 @@ bool faith_has_penalty();
 void mons_make_god_gift(monster& mon, god_type god = you.religion);
 bool mons_is_god_gift(const monster& mon, god_type god = you.religion);
 
-int yred_random_servants(unsigned int threshold, bool force_hostile = false);
-bool is_yred_undead_slave(const monster& mon);
-bool is_orcish_follower(const monster& mon);
+bool yred_random_servant(unsigned int threshold, bool force_hostile = false, int num = 1);
+bool yred_reap_chance();
+bool is_yred_undead_follower(const monster& mon);
+bool is_apostle_follower(const monster& mon);
 bool is_fellow_slime(const monster& mon);
 bool is_follower(const monster& mon);
 
 // Vehumet gift interface.
-bool vehumet_is_offering(spell_type spell);
+bool vehumet_is_offering(spell_type spell, bool only = false);
 void vehumet_accept_gift(spell_type spell);
 
 mgen_data hepliaklqana_ancestor_gen_data();

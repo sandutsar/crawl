@@ -29,7 +29,6 @@ enum status_type
     STATUS_TERRAIN,
     STATUS_SILENCE,
     STATUS_BEOGH,
-    STATUS_RECALL,
     STATUS_LIQUEFIED,
     STATUS_DRAINED,
     STATUS_RAY,
@@ -38,11 +37,9 @@ enum status_type
     STATUS_CLOUD,
     STATUS_ORB,
     STATUS_STILL_WINDS,
-    STATUS_MISSILES,
     STATUS_SERPENTS_LASH,
     STATUS_HEAVENLY_STORM,
     STATUS_ZOT,
-    STATUS_CURL,
     STATUS_MAXWELLS,
     STATUS_DUEL,
     STATUS_NO_SCROLL,
@@ -51,7 +48,14 @@ enum status_type
     STATUS_NO_POTIONS,
     STATUS_LOWERED_WL,
     STATUS_FLAME_WAVE,
-    STATUS_LAST_STATUS = STATUS_FLAME_WAVE
+    STATUS_PEEKING,
+    STATUS_IN_DEBT,
+    STATUS_CANINE_FAMILIAR_ACTIVE,
+    STATUS_BLACK_TORCH,
+    STATUS_GEM,
+    STATUS_REV,
+    STATUS_DRACONIAN_BREATH,
+    STATUS_LAST_STATUS = STATUS_DRACONIAN_BREATH
 };
 
 struct status_info
@@ -79,7 +83,7 @@ void init_duration_index();
 bool duration_decrements_normally(duration_type dur);
 const char *duration_end_message(duration_type dur);
 void duration_end_effect(duration_type dur);
-const char *duration_mid_message(duration_type dur);
-int duration_mid_offset(duration_type dur);
+const char *duration_expire_message(duration_type dur);
+int duration_expire_offset(duration_type dur);
 int duration_expire_point(duration_type dur);
-msg_channel_type duration_mid_chan(duration_type dur);
+msg_channel_type duration_expire_chan(duration_type dur);

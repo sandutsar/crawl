@@ -11,6 +11,7 @@
 
 #include "act-iter.h"
 #include "areas.h"
+#include "art-enum.h"
 #include "artefact.h"
 #include "branch.h"
 #include "database.h"
@@ -41,7 +42,7 @@ static void _actor_apply_noise(actor *act,
                                const coord_def &apparent_source,
                                int noise_intensity_millis);
 
-/// By default, what databse lookup key corresponds to each shout type?
+/// By default, what database lookup key corresponds to each shout type?
 static const map<shout_type, string> default_msg_keys = {
     { S_SILENT,         "" },
     { S_SHOUT,          "__SHOUT" },
@@ -60,11 +61,14 @@ static const map<shout_type, string> default_msg_keys = {
     { S_CROAK,          "__CROAK" },
     { S_GROWL,          "__GROWL" },
     { S_HISS,           "__HISS" },
+    { S_SKITTER,        "__SKITTER" },
+    { S_FAINT_SKITTER,  "__FAINT_SKITTER" },
     { S_DEMON_TAUNT,    "__DEMON_TAUNT" },
     { S_CHERUB,         "__CHERUB" },
     { S_SQUEAL,         "__SQUEAL" },
     { S_LOUD_ROAR,      "__LOUD_ROAR" },
     { S_RUSTLE,         "__RUSTLE" },
+    { S_SQUEAK,         "__SQUEAK" },
 };
 
 /**
@@ -176,7 +180,7 @@ void monster_shout(monster* mons, int shout)
         // same glyph/symbol
         string glyph_key = "'";
 
-        // Database keys are case-insensitve.
+        // Database keys are case-insensitive.
         if (isaupper(mchar))
             glyph_key += "cap-";
 
@@ -220,25 +224,6 @@ void monster_shout(monster* mons, int shout)
 
         strip_channel_prefix(message, channel);
 
-        // Monster must come up from being submerged if it wants to shout.
-        // XXX: this code is probably unreachable now?
-        if (mons->submerged())
-        {
-            if (!mons->del_ench(ENCH_SUBMERGED))
-            {
-                // Couldn't unsubmerge.
-                return;
-            }
-
-            if (you.can_see(*mons))
-            {
-                mons->seen_context = SC_FISH_SURFACES;
-
-                // Give interrupt message before shout message.
-                handle_seen_interrupt(mons);
-            }
-        }
-
         if (channel != MSGCH_TALK_VISUAL || you.can_see(*mons))
         {
             // Otherwise it can move away with no feedback.
@@ -263,8 +248,8 @@ void monster_shout(monster* mons, int shout)
 
 bool check_awaken(monster* mons, int stealth)
 {
-    // Usually redundant because we iterate over player LOS,
-    // but e.g. for passive_t::xray_vision.
+    // Usually redundant because we iterate over player LOS.
+    // Maybe can be removed now that xray_vision is gone?
     if (!mons->see_cell(you.pos()))
         return false;
 
@@ -416,21 +401,17 @@ void item_noise(const item_def &item, actor &act, string msg, int loudness)
 }
 
 // TODO: Let artefacts besides weapons generate noise.
-void noisy_equipment()
+void noisy_equipment(const item_def &weapon)
 {
     if (silenced(you.pos()) || !one_chance_in(20))
         return;
 
     string msg;
 
-    const item_def* weapon = you.weapon();
-    if (!weapon)
-        return;
-
-    if (is_unrandom_artefact(*weapon))
+    if (is_unrandom_artefact(weapon))
     {
-        string name = weapon->name(DESC_PLAIN, false, true, false, false,
-                                   ISFLAG_IDENT_MASK);
+        string name = weapon.name(DESC_PLAIN, false, true, false, false,
+                                  ISFLAG_IDENT_MASK);
         msg = getSpeakString(name);
         if (msg == "NONE")
             return;
@@ -439,7 +420,7 @@ void noisy_equipment()
     if (msg.empty())
         msg = getSpeakString("noisy weapon");
 
-    item_noise(*weapon, you, msg, 20);
+    item_noise(weapon, you, msg, 20);
 }
 
 // Berserking monsters cannot be ordered around.
@@ -447,7 +428,7 @@ static bool _follows_orders(monster* mon)
 {
     return mon->friendly()
            && mon->type != MONS_BALLISTOMYCETE_SPORE
-           && !mon->berserk_or_insane()
+           && !mon->berserk_or_frenzied()
            && !mons_is_conjured(mon->type)
            && !mon->has_ench(ENCH_HAUNTING);
 }
@@ -481,13 +462,14 @@ static void _set_allies_patrol_point(bool clear = false)
             mi->behaviour = BEH_WANDER;
         else
             mi->behaviour = BEH_SEEK;
+        mi->travel_path.clear();
     }
 }
 
 static void _set_allies_withdraw(const coord_def &target)
 {
     coord_def delta = target - you.pos();
-    float mult = float(LOS_DEFAULT_RANGE * 2) / (float)max(abs(delta.x), abs(delta.y));
+    float mult = float(LOS_DEFAULT_RANGE * 3) / (float)max(abs(delta.x), abs(delta.y));
     coord_def rally_point = clamp_in_bounds(coord_def(delta.x * mult, delta.y * mult) + you.pos());
 
     for (monster_near_iterator mi(you.pos()); mi; ++mi)
@@ -502,8 +484,6 @@ static void _set_allies_withdraw(const coord_def &target)
         mi->foe = MHITNOT;
 
         mi->props.erase(LAST_POS_KEY);
-        mi->props.erase(IDLE_POINT_KEY);
-        mi->props.erase(IDLE_DEADLINE_KEY);
         mi->props.erase(BLOCKED_DEADLINE_KEY);
     }
 }
@@ -548,11 +528,22 @@ static int _issue_orders_prompt()
     return keyn;
 }
 
+/// If the monster is invisible, can at least one of your allies see them?
+static bool _allies_can_see(const monster &mon)
+{
+    if (!mon.invisible())
+        return true; // XXX: even if we have no allies?
+    for (monster_near_iterator mi(you.pos()); mi; ++mi)
+        if (_follows_orders(*mi) && mi->can_see_invisible())
+            return true;
+    return false;
+}
+
 /**
  * Issue the order specified by the given key.
  *
  * @param keyn              The key the player just pressed.
- * @param mons_targd[out]   Who the player's allies should be targetting as a
+ * @param mons_targd[out]   Who the player's allies should be targeting as a
  *                          result of this command.
  * @return                  Whether a command actually executed (and the value
  *                          of mons_targd should be used).
@@ -622,20 +613,28 @@ static bool _issue_order(int keyn, int &mons_targd)
                 return false;
             }
 
-            bool cancel = !targ.isValid;
-            if (!cancel)
-            {
-                const monster* m = monster_at(targ.target);
-                cancel = (m == nullptr || !you.can_see(*m));
-                if (!cancel)
-                    mons_targd = m->mindex();
-            }
-
-            if (cancel)
+            if (!targ.isValid)
             {
                 canned_msg(MSG_NOTHING_THERE);
                 return false;
             }
+
+            const monster* m = monster_at(targ.target);
+            if (!m || !you.can_see(*m))
+            {
+                canned_msg(MSG_NOTHING_THERE);
+                return false;
+            }
+
+            if (!_allies_can_see(*m))
+            {
+                mprf("%s is invisible, and you have no allies that can see %s.",
+                     m->name(DESC_THE).c_str(),
+                     m->pronoun(PRONOUN_OBJECTIVE).c_str());
+                return false;
+            }
+
+            mons_targd = m->mindex();
         }
             break;
 
@@ -673,6 +672,40 @@ static bool _issue_order(int keyn, int &mons_targd)
     return true;
 }
 
+static string _allies_who_cant_see_invis()
+{
+    // We assume that at least some of your allies can see the target, since we
+    // forbid giving attack orders for a target none of your allies can see.
+    monster *non_sinv_ally = nullptr;
+    for (monster_near_iterator mi(you.pos()); mi; ++mi)
+    {
+        if (!_follows_orders(*mi) || mi->can_see_invisible())
+            continue;
+        if (non_sinv_ally)
+            return "some of your allies";
+        non_sinv_ally = *mi;
+    }
+
+    if (non_sinv_ally)
+        return non_sinv_ally->name(DESC_YOUR);
+    return "";
+}
+
+static void _check_unseen_target(int mindex)
+{
+    const monster &target = env.mons[mindex];
+    if (!target.invisible())
+        return;
+
+    const string allies = _allies_who_cant_see_invis();
+    if (allies.empty())
+        return;
+    mprf("%s is invisible, and %s can't see %s.",
+         target.name(DESC_THE).c_str(),
+         allies.c_str(),
+         target.pronoun(PRONOUN_OBJECTIVE).c_str());
+}
+
 /**
  * Prompt the player to either change their allies' orders or to shout.
  *
@@ -707,7 +740,10 @@ void issue_orders()
     _set_friendly_foes(keyn == 's' || keyn == 'w');
 
     if (mons_targd != MHITNOT && mons_targd != MHITYOU)
+    {
         mpr("Attack!");
+        _check_unseen_target(mons_targd);
+    }
 }
 
 /**
@@ -754,9 +790,12 @@ void yell(const actor* mon)
     }
     else
     {
-        mprf(MSGCH_SOUND, "You %s%s!",
+        const char *fugue_suff = you.duration[DUR_FUGUE] ?
+            ", and the damned howl along" : "";
+        mprf(MSGCH_SOUND, "You %s%s%s!",
              shout_verb.c_str(),
-             you.berserk() ? " wildly" : " for attention");
+             you.berserk() ? " wildly" : " for attention",
+             fugue_suff);
     }
 
     noisy(noise_level, you.pos());
@@ -793,8 +832,9 @@ bool noisy(int original_loudness, const coord_def& where,
         ambient < 0 ? original_loudness + random2avg(abs(ambient), 3)
                     : original_loudness - random2avg(abs(ambient), 3);
 
-    const int adj_loudness = you.has_mutation(MUT_NOISE_DAMPENING)
-                && you.see_cell(where) ? div_rand_round(loudness, 2) : loudness;
+    const int adj_loudness = ((you.has_mutation(MUT_NOISE_DAMPENING)
+                               || player_equip_unrand(UNRAND_THIEF))
+                && you.see_cell(where)) ? div_rand_round(loudness, 2) : loudness;
 
     dprf(DIAG_NOISE, "Noise %d (orig: %d; ambient: %d) at pos(%d,%d)",
          adj_loudness, original_loudness, ambient, where.x, where.y);
@@ -1278,7 +1318,7 @@ void noise_grid::write_noise_grid(FILE *outf) const
 
 void noise_grid::dump_noise_grid(const string &filename) const
 {
-    FILE *outf = fopen(filename.c_str(), "w");
+    FILE *outf = fopen_u(filename.c_str(), "w");
     fprintf(outf, "<!DOCTYPE html><html><head>");
     _write_noise_grid_css(outf);
     fprintf(outf, "</head>\n<body>\n");

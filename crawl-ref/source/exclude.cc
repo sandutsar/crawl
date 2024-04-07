@@ -34,11 +34,15 @@ static bool _mon_needs_auto_exclude(const monster* mon, bool sleepy = false)
 {
     // These include the base monster's name in their name, but we don't
     // want things in the auto_exclude option to match them.
-    if (mon->type == MONS_PILLAR_OF_SALT || mon->type == MONS_BLOCK_OF_ICE
+    if (mons_class_is_remnant(mon->type)
         || mons_class_is_test(mon->type)) // don't autoexclude test statues/spawners
     {
         return false;
     }
+
+    // Please don't autoexclude your friends. It'll hurt their feelings.
+    if (mon->wont_attack())
+        return false;
 
     if (mon->is_stationary())
         return !sleepy;
@@ -93,12 +97,19 @@ void add_auto_excludes()
         monster *mon = monster_at(*ri);
         if (!mon || mon->is_summoned())
             continue;
+
         // Something of a speed hack, but some vaults have a TON of plants.
-        if (mon->type == MONS_PLANT)
+        if (mons_is_firewood(*mon))
             continue;
         if (_need_auto_exclude(mon) && !is_exclude_root(*ri))
         {
             int radius = _get_full_exclusion_radius();
+            // Sting and Harpoon Shot's minimum ranges, respectively.
+            if (mon->type == MONS_SCRUB_NETTLE)
+                radius = min(radius, 4);
+            else if (mon->type == MONS_STARFLOWER)
+                radius = min(radius, 6);
+
             set_exclude(*ri, radius, true);
             mons.emplace_back(mon);
         }

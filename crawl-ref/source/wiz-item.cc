@@ -11,12 +11,14 @@
 
 #include "acquire.h"
 #include "act-iter.h"
+#include "areas.h"
 #include "artefact.h"
 #include "art-enum.h"
 #include "cio.h"
 #include "coordit.h"
 #include "decks.h"
 #include "dbg-util.h"
+#include "dungeon.h"
 #include "env.h"
 #include "god-passive.h"
 #include "invent.h"
@@ -42,6 +44,7 @@
 #include "spl-util.h"
 #include "stash.h"
 #include "stringutil.h"
+#include "syscalls.h"
 #include "tag-version.h"
 #include "terrain.h"
 #include "unicode.h"
@@ -93,33 +96,18 @@ void wizard_create_spec_object_by_name()
 
 void wizard_create_spec_object()
 {
-    char specs[80];
-    char32_t keyin;
-    object_class_type class_wanted;
-
-    do
+    string title = "Which item class (ESC to exit)?";
+    vector<WizardEntry> options =
     {
-        mprf(MSGCH_PROMPT, ") - weapons     ( - missiles  [ - armour  / - wands    ?  - scrolls");
-        mprf(MSGCH_PROMPT, "= - jewellery   ! - potions   : - books   | - staves   }  - miscellany");
-        mprf(MSGCH_PROMPT, "X - corpses     $ - gold    0  - the Orb");
-        mprf(MSGCH_PROMPT, "ESC - exit");
-
-        msgwin_prompt("What class of item? ");
-
-        keyin = towupper(get_ch());
-
-        class_wanted = item_class_by_sym(keyin);
-        if (key_is_escape(keyin) || keyin == ' '
-                || keyin == '\r' || keyin == '\n')
-        {
-            msgwin_reply("");
-            canned_msg(MSG_OK);
-            return;
-        }
-    } while (class_wanted == NUM_OBJECT_CLASSES);
-
-    // XXX: hope item_class_by_sym never returns a real class for non-ascii.
-    msgwin_reply(string(1, (char) keyin));
+        {')', "weapons"}, {'(', "missiles"}, {'[', "armour"}, {'/', "wands"},
+        {'?', "scrolls"}, {'=', "jewellery"}, {'!', "potions"}, {':', "books"},
+        {'|', "staves"}, {'}', "miscellany"}, {'%', "talismans"},
+        {'X', "corpses"}, {'$', "gold"}, {'0', "the Orb"}
+    };
+    auto menu = WizardMenu(title, options);
+    object_class_type class_wanted = item_class_by_sym(menu.run());
+    if (NUM_OBJECT_CLASSES == class_wanted)
+        return;
 
     // Allocate an item to play with.
     int thing_created = get_mitm_slot();
@@ -192,7 +180,9 @@ void wizard_create_spec_object()
     }
     else
     {
-        string prompt = "What type of item? ";
+        char specs[80];
+        string prompt = make_stringf("What type of %s? ",
+                                     base_type_string(class_wanted));
         if (class_wanted == OBJ_BOOKS)
             prompt += "(\"all\" for all) ";
         msgwin_get_line_autohist(prompt, specs, sizeof(specs));
@@ -256,69 +246,31 @@ static void _tweak_randart(item_def &item)
 
     string prompt = "";
 
-    vector<unsigned int> choice_to_prop;
-    for (unsigned int i = 0, choice_num = 0; i < ARTP_NUM_PROPERTIES; ++i)
+    vector<WizardEntry> choices;
+    for (unsigned int i = 0, choice = 'a'; i < ARTP_NUM_PROPERTIES; ++i)
     {
 #if TAG_MAJOR_VERSION == 34
         if (i == ARTP_METABOLISM || i == ARTP_ACCURACY || i == ARTP_TWISTER)
             continue;
 #endif
-        choice_to_prop.push_back(i);
-        if (choice_num % 8 == 0 && choice_num != 0)
-            prompt.back() = '\n'; // Replace the space
+        auto prop = (artefact_prop_type)i;
+        choices.emplace_back(WizardEntry(choice, artp_name(prop), i));
 
-        char choice;
-        char buf[80];
-
-        if (choice_num < 26)
-            choice = 'a' + choice_num;
-        else if (choice_num < 52)
-            choice = 'A' + choice_num - 26;
-        else if (choice_num < 'A' - '0' + 52)
-        {
-            // 0-9 then :;<=>?@ . Any higher would collide with letters.
-            choice = '0' + choice_num - 52;
-        }
+        if (choice == 'z')
+            choice = 'A';
+        else if (choice == 'Z')
+            choice = '0';
+        else if (choice == '@' || !choice)
+            choice = 0;
         else
-            choice = '-'; // Too many choices!
-
-        snprintf(buf, sizeof(buf), "%s) %s%-6s%s ",
-                choice == '<' ? "<<" : string(1, choice).c_str(),
-                 props[i] ? "<w>" : "",
-                 artp_name((artefact_prop_type)choice_to_prop[choice_num]),
-                 props[i] ? "</w>" : "");
-
-        prompt += buf;
-
-        choice_num++;
+            ++choice;
     }
-    mprf_nocap(MSGCH_PROMPT, "%s", prompt.c_str());
-
-    mprf(MSGCH_PROMPT, "Change which field? ");
-
-    int keyin = get_ch();
-    unsigned int  choice;
-
-    if (isaalpha(keyin) && islower(keyin))
-        choice = keyin - 'a';
-    else if (isaalpha(keyin) && isupper(keyin))
-        choice = keyin - 'A' + 26;
-    else if (keyin >= '0' && keyin < 'A')
-        choice = keyin - '0' + 52;
-    else
-    {
-        canned_msg(MSG_OK);
+    auto menu = WizardMenu("Change which field (ESC to exit)?", choices);
+    if (!menu.run(true))
         return;
-    }
+    auto prop = static_cast<artefact_prop_type>(menu.result());
 
-    if (choice >= choice_to_prop.size())
-    {
-        canned_msg(MSG_HUH);
-        return;
-    }
-
-    const artefact_prop_type prop = (artefact_prop_type)choice_to_prop[choice];
-    switch (artp_potential_value_types(prop))
+    switch (artp_value_type(prop))
     {
     case ARTP_VAL_BOOL:
         mprf(MSGCH_PROMPT, "Toggling %s to %s.", artp_name(prop),
@@ -405,39 +357,29 @@ void wizard_tweak_object()
     while (true)
     {
         int64_t old_val = 0; // flags are uint64_t, but they don't care
-
-        while (true)
+        string c_prop = is_art ? "art props" : "special";
+        vector<WizardEntry> options =
         {
-            mprf_nocap("%s", you.inv[item].name(DESC_INVENTORY_EQUIP).c_str());
+            {'a', "plus"}, {'b', "plus2"}, {'c', c_prop}, {'d', "quantity"},
+            {'e', "flags"}
+        };
+        mprf_nocap("%s", you.inv[item].name(DESC_INVENTORY_EQUIP).c_str());
+        auto menu = WizardMenu("Which field (Esc to exit)?", options);
+        keyin = menu.run();
 
-            mprf_nocap(MSGCH_PROMPT, "a - plus  b - plus2  c - %s  "
-                                     "d - quantity  e - flags  ESC - exit",
-                                     is_art ? "art props" : "special");
+        if (keyin == 'a')
+            old_val = you.inv[item].plus;
+        else if (keyin == 'b')
+            old_val = you.inv[item].plus2;
+        else if (keyin == 'c')
+            old_val = you.inv[item].special;
+        else if (keyin == 'd')
+            old_val = you.inv[item].quantity;
+        else if (keyin == 'e')
+            old_val = you.inv[item].flags;
+        else if (!menu.success())
+            return;
 
-            mprf(MSGCH_PROMPT, "Which field? ");
-
-            keyin = toalower(get_ch());
-
-            if (keyin == 'a')
-                old_val = you.inv[item].plus;
-            else if (keyin == 'b')
-                old_val = you.inv[item].plus2;
-            else if (keyin == 'c')
-                old_val = you.inv[item].special;
-            else if (keyin == 'd')
-                old_val = you.inv[item].quantity;
-            else if (keyin == 'e')
-                old_val = you.inv[item].flags;
-            else if (key_is_escape(keyin) || keyin == ' '
-                    || keyin == '\r' || keyin == '\n')
-            {
-                canned_msg(MSG_OK);
-                return;
-            }
-
-            if (keyin >= 'a' && keyin <= 'e')
-                break;
-        }
 
         if (is_art && keyin == 'c')
         {
@@ -494,13 +436,6 @@ void wizard_tweak_object()
     }
 }
 
-// Returns whether an item of this type can be an artefact.
-static bool _item_type_can_be_artefact(int type)
-{
-    return type == OBJ_WEAPONS || type == OBJ_ARMOUR || type == OBJ_JEWELLERY
-           || type == OBJ_BOOKS;
-}
-
 static bool _make_book_randart(item_def &book)
 {
     int type;
@@ -539,7 +474,7 @@ void wizard_value_item()
 /**
  * Generate every unrand (including removed ones).
  *
- * @param override_unique if true, will generate unrands that have alread
+ * @param override_unique if true, will generate unrands that have already
  * placed in the game. If false, will generate fallback randarts for any
  * unrands that have already placed.
  */
@@ -644,7 +579,7 @@ void wizard_make_object_randart()
         return;
     }
 
-    if (!_item_type_can_be_artefact(item.base_type))
+    if (!item_type_can_be_artefact(item.base_type))
     {
         mpr("That item cannot be turned into an artefact.");
         return;
@@ -828,7 +763,7 @@ static void _fill_item_from_subtype(object_class_type acq_type, int subtype,
     item.sub_type = subtype;
 }
 
-static void _debug_acquirement_stats(FILE *ostat)
+static void _debug_acquirement_stats()
 {
     int p = get_mitm_slot(11);
     if (p == NON_ITEM)
@@ -839,34 +774,37 @@ static void _debug_acquirement_stats(FILE *ostat)
     env.item[p].base_type = OBJ_UNASSIGNED;
 
     clear_messages();
-    mpr("[a] Weapons [b] Armours   [c] Jewellery [d] Books");
-    mpr("[e] Staves  [f] Evocables");
-    mprf(MSGCH_PROMPT, "What kind of item would you like to get acquirement stats on? ");
 
-    object_class_type type;
-    const int keyin = toalower(get_ch());
-    switch (keyin)
+    vector<WizardEntry> choices;
+    object_class_type list[] =
     {
-    case 'a': type = OBJ_WEAPONS;    break;
-    case 'b': type = OBJ_ARMOUR;     break;
-    case 'c': type = OBJ_JEWELLERY;  break;
-    case 'd': type = OBJ_BOOKS;      break;
-    case 'e': type = OBJ_STAVES;     break;
-    case 'f': type = OBJ_MISCELLANY; break;
-    default:
-        canned_msg(MSG_OK);
+        OBJ_WEAPONS, OBJ_ARMOUR, OBJ_JEWELLERY, OBJ_BOOKS, OBJ_STAVES,
+        OBJ_MISCELLANY, OBJ_TALISMANS
+    };
+    char c = 'a';
+    for (auto typ : list)
+        choices.emplace_back(WizardEntry(c++, item_class_name(typ), typ));
+    auto menu = WizardMenu("What kind of item would you like to get acquirement"
+                           " stats on (ESC to exit)?", choices, OBJ_UNASSIGNED);
+    if (!menu.run(true))
         return;
-    }
+    auto type = static_cast<object_class_type>(menu.result());
 
     const int num_itrs = prompt_for_int("How many iterations? ", true);
-
-    if (num_itrs == 0)
+    if (num_itrs < 0)
     {
         canned_msg(MSG_OK);
         return;
     }
 
-    int last_percent = 0;
+    FILE *ostat = fopen_u("acquirement_stats.txt", "a");
+    if (!ostat)
+    {
+        mprf(MSGCH_ERROR, "Can't write to acquirement_stats.txt: %s",
+                strerror(errno));
+        return;
+    }
+
     int acq_calls    = 0;
     int total_quant  = 0;
     short max_plus   = -127;
@@ -875,7 +813,7 @@ static void _debug_acquirement_stats(FILE *ostat)
     int randbook_spells = 0;
 
     int subtype_quants[256];
-    int ego_quants[NUM_SPECIAL_WEAPONS];
+    int ego_quants[256];
 
     memset(subtype_quants, 0, sizeof(subtype_quants));
     memset(ego_quants, 0, sizeof(ego_quants));
@@ -890,7 +828,7 @@ static void _debug_acquirement_stats(FILE *ostat)
         }
 
         const int item_index = acquirement_create_item(type, AQ_WIZMODE, true,
-                you.pos());
+                coord_def(0, 0));
 
         if (item_index == NON_ITEM || !env.item[item_index].defined())
         {
@@ -944,12 +882,12 @@ static void _debug_acquirement_stats(FILE *ostat)
 
         destroy_item(item_index, true);
 
-        int curr_percent = acq_calls * 100 / num_itrs;
-        if (curr_percent > last_percent)
+        if (num_itrs >= 10 && (i + 1) % (num_itrs / 10) == 0)
         {
             clear_messages();
-            mprf("%2d%% done.", curr_percent);
-            last_percent = curr_percent;
+            mprf("%d%% done.", 100 * (i + 1) / num_itrs);
+            viewwindow();
+            update_screen();
         }
     }
 
@@ -960,15 +898,7 @@ static void _debug_acquirement_stats(FILE *ostat)
     }
 
     // Print acquirement base type.
-    fprintf(ostat, "Acquiring %s for:\n\n",
-            type == OBJ_WEAPONS    ? "weapons" :
-            type == OBJ_ARMOUR     ? "armour"  :
-            type == OBJ_JEWELLERY  ? "jewellery" :
-            type == OBJ_BOOKS      ? "books" :
-            type == OBJ_STAVES     ? "staves" :
-            type == OBJ_WANDS      ? "wands" :
-            type == OBJ_MISCELLANY ? "misc. items"
-                                   : "buggy items");
+    fprintf(ostat, "Acquiring %s for:\n\n", item_class_name(type, true));
 
     // Print player species/profession.
     string godname = "";
@@ -984,7 +914,7 @@ static void _debug_acquirement_stats(FILE *ostat)
     // Print player equipment.
     const int e_order[] =
     {
-        EQ_WEAPON, EQ_BODY_ARMOUR, EQ_SHIELD, EQ_HELMET, EQ_CLOAK,
+        EQ_WEAPON, EQ_BODY_ARMOUR, EQ_OFFHAND, EQ_HELMET, EQ_CLOAK,
         EQ_GLOVES, EQ_BOOTS, EQ_AMULET, EQ_RIGHT_RING, EQ_LEFT_RING,
         EQ_RING_ONE, EQ_RING_TWO, EQ_RING_THREE, EQ_RING_FOUR,
         EQ_RING_FIVE, EQ_RING_SIX, EQ_RING_SEVEN, EQ_RING_EIGHT,
@@ -994,6 +924,10 @@ static void _debug_acquirement_stats(FILE *ostat)
     bool naked = true;
     for (int i = EQ_FIRST_EQUIP; i < NUM_EQUIP; i++)
     {
+        // We can't acquire for the gizmo or preview ring slots. Skip them.
+        if (i == EQ_GIZMO || i == EQ_PREVIEW_RING)
+            continue;
+
         int eqslot = e_order[i];
 
         // Only output filled slots.
@@ -1076,60 +1010,15 @@ static void _debug_acquirement_stats(FILE *ostat)
                 (float) total_plus / (float) acq_calls);
 
         fprintf(ostat, "Egos (including artefacts):\n");
-
-        const char* names[] =
-        {
-            "normal",
-            "flaming",
-            "freezing",
-            "holy wrath",
-            "electrocution",
-#if TAG_MAJOR_VERSION == 34
-            "orc slaying",
-            "dragon slaying",
-#endif
-            "venom",
-            "protection",
-            "draining",
-            "speed",
-            "vorpal",
-#if TAG_MAJOR_VERSION == 34
-            "flame",
-            "frost",
-#endif
-            "vampirism",
-            "pain",
-            "antimagic",
-            "distortion",
-#if TAG_MAJOR_VERSION == 34
-            "reaching",
-            "returning",
-#endif
-            "chaos",
-#if TAG_MAJOR_VERSION == 34
-            "evasion",
-            "confusion",
-#endif
-            "penetration",
-            "reaping",
-            "spectral",
-            "INVALID",
-            "acid",
-#if TAG_MAJOR_VERSION > 34
-            "confuse",
-#endif
-            "weak",
-            "vuln",
-            "debug randart",
-        };
-        COMPILE_CHECK(ARRAYSZ(names) == NUM_SPECIAL_WEAPONS);
-
         for (int i = 0; i < NUM_SPECIAL_WEAPONS; ++i)
+        {
+            const brand_type brand = static_cast<brand_type>(i);
             if (ego_quants[i] > 0)
             {
-                fprintf(ostat, "%14s: %5.2f\n", names[i],
+                fprintf(ostat, "%14s: %5.2f\n", brand_type_name(brand, false),
                         100.0 * (float) ego_quants[i] / (float) acq_calls);
             }
+        }
 
         fprintf(ostat, "\n\n");
     }
@@ -1140,49 +1029,13 @@ static void _debug_acquirement_stats(FILE *ostat)
                 (float) total_plus / (float) acq_calls);
 
         fprintf(ostat, "Egos (excluding artefacts):\n");
-
-        const char* names[] =
-        {
-            "normal",
-            "running",
-            "fire resistance",
-            "cold resistance",
-            "poison resistance",
-            "see invis",
-            "invisibility",
-            "strength",
-            "dexterity",
-            "intelligence",
-            "ponderous",
-            "flight",
-            "willpower",
-            "protection",
-            "stealth",
-            "resistance",
-            "positive energy",
-            "archmagi",
-            "preservation",
-            "reflection",
-            "spirit shield",
-            "hurling",
-#if TAG_MAJOR_VERSION == 34
-            "jumping",
-#endif
-            "repulsion",
-#if TAG_MAJOR_VERSION == 34
-            "cloud immunity",
-#endif
-            "harm",
-            "rampaging",
-            "infusion",
-        };
-
         const int non_art = acq_calls - num_arts;
         for (int i = 0; i < NUM_SPECIAL_ARMOURS; ++i)
         {
+            const special_armour_type ego = static_cast<special_armour_type>(i);
             if (ego_quants[i] > 0)
             {
-                fprintf(ostat, "%17s: %5.2f\n", names[i],
+                fprintf(ostat, "%17s: %5.2f\n", special_armour_type_name(ego, false),
                         100.0 * (float) ego_quants[i] / (float) non_art);
             }
         }
@@ -1196,29 +1049,13 @@ static void _debug_acquirement_stats(FILE *ostat)
         {
             fprintf(ostat, "Primary disciplines/levels of randart books:\n");
 
-            const char* names[] =
-            {
-                "none",
-                "conjuration",
-                "hexes",
-                "fire magic",
-                "ice magic",
-                "transmutation",
-                "necromancy",
-                "summoning",
-                "translocation",
-                "poison magic",
-                "earth magic",
-                "air magic",
-            };
-            // + 2 because we have the exponent bits plus "none"
-            COMPILE_CHECK(ARRAYSZ(names) == SPSCHOOL_LAST_EXPONENT + 2);
-
             for (int i = 0; i <= SPSCHOOL_LAST_EXPONENT; ++i)
             {
+                const auto school = spschools_type::exponent(i);
                 if (ego_quants[i] > 0)
                 {
-                    fprintf(ostat, "%17s: %5.2f\n", names[i],
+                    fprintf(ostat, "%17s: %5.2f\n",
+                            spelltype_long_name(school),
                             100.0 * (float) ego_quants[i] / (float) num_arts);
                 }
             }
@@ -1279,7 +1116,7 @@ static void _debug_acquirement_stats(FILE *ostat)
 
     // Now output the sub types.
     char format_str[80];
-    sprintf(format_str, "%%%ds: %%6.2f\n", max_width);
+    snprintf(format_str, sizeof(format_str), "%%%ds: %%6.2f\n", max_width);
 
     for (int i = 0; i < 256; ++i)
     {
@@ -1296,9 +1133,10 @@ static void _debug_acquirement_stats(FILE *ostat)
         fprintf(ostat, format_str, name.c_str(),
                 (float) subtype_quants[i] * 100.0 / (float) total_quant);
     }
-    fprintf(ostat, "-----------------------------------------\n\n");
 
-    mpr("Results written into 'items.stat'.");
+    fprintf(ostat, "-----------------------------------------\n\n");
+    fclose(ostat);
+    mpr("Results written into acquirement_stats.txt.");
 }
 
 /**
@@ -1310,28 +1148,33 @@ static int _median(vector<int> &counts)
     return counts[counts.size()/2];
 }
 
-#define MAX_TRIES 27272
-static void _debug_rap_stats(FILE *ostat)
+static void _debug_randart_stats()
 {
-    const int inv_index
-        = prompt_invent_item("Generate randart stats on which item?",
-                             menu_type::invlist, OSEL_ANY);
-
-    if (prompt_failed(inv_index))
-        return;
-
-    // A copy of the item, rather than a reference to the inventory item,
-    // so we can fiddle with the item at will.
-    item_def item(you.inv[inv_index]);
-
-    // Start off with a non-artefact item.
-    item.flags  &= ~ISFLAG_ARTEFACT_MASK;
-    item.unrand_idx = 0;
-    item.props.clear();
-
-    if (!make_item_randart(item))
+    char buf[1024];
+    mprf(MSGCH_PROMPT, "Enter name of item (or ITEM spec): ");
+    if (cancellable_get_line_autohist(buf, sizeof buf) || !*buf)
     {
-        mpr("Can't make a randart out of that type of item.");
+        canned_msg(MSG_OK);
+        return;
+    }
+
+    item_list ilist;
+    const string err = ilist.add_item(buf, false);
+    if (!err.empty())
+    {
+        mprf(MSGCH_ERROR, "Error: %s", err.c_str());
+        return;
+    }
+
+    // Save an item_spec based on the input so we can re-use it, and make it
+    // always be randart.
+    item_spec ispec = ilist.get_item(0);
+    ispec.level = ISPEC_RANDART;
+
+    const int num_itrs = prompt_for_int("How many iterations? ", true);
+    if (num_itrs < 0)
+    {
+        canned_msg(MSG_OK);
         return;
     }
 
@@ -1354,9 +1197,16 @@ static void _debug_rap_stats(FILE *ostat)
 
     int num_randarts = 0, bad_randarts = 0;
 
-    artefact_properties_t proprt;
+    FILE *ostat = fopen_u("randart_stats.txt", "a");
+    if (!ostat)
+    {
+        mprf(MSGCH_ERROR, "Can't write to randart_stats.txt: %s",
+                strerror(errno));
+        return;
+    }
+    fprintf(ostat, "Generating randart stats for: %s\n", buf);
 
-    for (int i = 0; i < MAX_TRIES; ++i)
+    for (int i = 0; i < num_itrs; i++)
     {
         if (kbhit())
         {
@@ -1365,17 +1215,34 @@ static void _debug_rap_stats(FILE *ostat)
             break;
         }
 
-        // Generate proprt once and hand it off to randart_is_bad(),
-        // so that randart_is_bad() doesn't generate it a second time.
-        item.flags  &= ~ISFLAG_ARTEFACT_MASK;
-        item.unrand_idx = 0;
-        item.props.clear();
-        make_item_randart(item);
+
+        int ind, tries = 0;
+        do
+        {
+            ind = dgn_place_item(ispec, coord_def(0, 0));
+            if (ind != NON_ITEM
+                && (!is_random_artefact(env.item[ind])
+                    || env.item[ind].base_type == OBJ_BOOKS))
+            {
+                destroy_item(env.item[ind], true);
+                ind = NON_ITEM;
+            }
+        } while (ind == NON_ITEM && ++tries < 100);
+
+        if (ind == NON_ITEM)
+        {
+            mprf(MSGCH_ERROR, "Unable to make artefact from '%s'", buf);
+            return;
+        }
+
+        const auto &item = env.item[ind];
+        artefact_properties_t proprt;
         artefact_properties(item, proprt);
 
         if (randart_is_bad(item, proprt))
         {
             bad_randarts++;
+            destroy_item(env.item[ind], true);
             continue;
         }
 
@@ -1384,7 +1251,7 @@ static void _debug_rap_stats(FILE *ostat)
         int num_good_props = 0, num_bad_props = 0;
         for (int j = 0; j < ARTP_NUM_PROPERTIES; ++j)
         {
-            const artefact_prop_type prop = (artefact_prop_type)j;
+            const auto prop = static_cast<artefact_prop_type>(j);
             const int val = proprt[prop];
             if (!val)
                 continue;
@@ -1422,16 +1289,15 @@ static void _debug_rap_stats(FILE *ostat)
 
         total_balance_props += balance;
 
-        if (i % (MAX_TRIES / 100) == 0)
+        destroy_item(env.item[ind], true);
+
+        if (num_itrs >= 10 && (i + 1) % (num_itrs / 10) == 0)
         {
             clear_messages();
-            float curr_percent = (float) i * 1000.0
-                / (float) MAX_TRIES;
-            mprf("%4.1f%% done.", curr_percent / 10.0);
+            mprf("%d%% done.", 100 * (i + 1) / num_itrs);
             viewwindow();
             update_screen();
         }
-
     }
 
     fprintf(ostat, "Randarts generated: %d valid, %d invalid\n\n",
@@ -1447,87 +1313,18 @@ static void _debug_rap_stats(FILE *ostat)
     // assumption: all props are good or bad
     const int total_props = total_good_props + total_bad_props;
 
-    fprintf(ostat, "max # of props = %d, mean = %5.2f, median = %d\n",
+    fprintf(ostat, "Max # of props = %d, mean = %5.2f, median = %d\n",
             max_props, (float) total_props / (float) num_randarts,
             _median(total_prop_counts));
-    fprintf(ostat, "max # of good props = %d, mean = %5.2f, median = %d\n",
+    fprintf(ostat, "Max # of good props = %d, mean = %5.2f, median = %d\n",
             max_good_props, (float) total_good_props / (float) num_randarts,
             _median(good_prop_counts));
-    fprintf(ostat, "max # of bad props = %d, mean = %5.2f, median = %d\n",
+    fprintf(ostat, "Max # of bad props = %d, mean = %5.2f, median = %d\n",
             max_bad_props, (float) total_bad_props / (float) num_randarts,
             _median(bad_prop_counts));
-    fprintf(ostat, "max (good - bad) props = %d, avg # = %5.2f\n\n",
+    fprintf(ostat, "Max (good - bad) props = %d, avg # = %5.2f\n\n",
             max_balance_props,
             (float) total_balance_props / (float) num_randarts);
-
-    const char* rap_names[] =
-    {
-        "ARTP_BRAND",
-        "ARTP_AC",
-        "ARTP_EVASION",
-        "ARTP_STRENGTH",
-        "ARTP_INTELLIGENCE",
-        "ARTP_DEXTERITY",
-        "ARTP_FIRE",
-        "ARTP_COLD",
-        "ARTP_ELECTRICITY",
-        "ARTP_POISON",
-        "ARTP_NEGATIVE_ENERGY",
-        "ARTP_WILLPOWER",
-        "ARTP_SEE_INVISIBLE",
-        "ARTP_INVISIBLE",
-        "ARTP_FLY",
-        "ARTP_BLINK",
-#if TAG_MAJOR_VERSION == 34
-        "ARTP_BERSERK",
-#endif
-        "ARTP_NOISE",
-        "ARTP_PREVENT_SPELLCASTING",
-        "ARTP_CAUSE_TELEPORTATION",
-        "ARTP_PREVENT_TELEPORTATION",
-        "ARTP_ANGRY",
-#if TAG_MAJOR_VERSION == 34
-        "ARTP_METABOLISM",
-#endif
-        "ARTP_CONTAM",
-#if TAG_MAJOR_VERSION == 34
-        "ARTP_ACCURACY",
-#endif
-        "ARTP_SLAYING",
-#if TAG_MAJOR_VERSION == 34
-        "ARTP_CURSE",
-#endif
-        "ARTP_STEALTH",
-        "ARTP_MAGICAL_POWER",
-        "ARTP_BASE_DELAY",
-        "ARTP_HP",
-        "ARTP_CLARITY",
-        "ARTP_BASE_ACC",
-        "ARTP_BASE_DAM",
-        "ARTP_RMSL",
-#if TAG_MAJOR_VERSION == 34
-        "ARTP_FOG",
-#endif
-        "ARTP_REGENERATION",
-#if TAG_MAJOR_VERSION == 34
-        "ARTP_SUSTAT",
-#endif
-        "ARTP_NO_UPGRADE",
-        "ARTP_RCORR",
-        "ARTP_RMUT",
-#if TAG_MAJOR_VERSION == 34
-        "ARTP_TWISTER",
-#endif
-        "ARTP_CORRODE",
-        "ARTP_DRAIN",
-        "ARTP_SLOW",
-        "ARTP_FRAGILE",
-        "ARTP_SHIELDING",
-        "ARTP_HARM",
-        "ARTP_RAMPAGING",
-        "ARTP_ARCHMAGI",
-    };
-    COMPILE_CHECK(ARRAYSZ(rap_names) == ARTP_NUM_PROPERTIES);
 
     fprintf(ostat, "                                 All    Good   Bad   Max AvgGood Min AvgBad\n");
     fprintf(ostat, "                           ------------------------------------------------\n");
@@ -1537,6 +1334,8 @@ static void _debug_rap_stats(FILE *ostat)
 
     for (int i = 0; i < ARTP_NUM_PROPERTIES; ++i)
     {
+        const auto prop = static_cast<artefact_prop_type>(i);
+
         const int total_props_of_type = good_props[i] + bad_props[i];
         if (!total_props_of_type)
             continue;
@@ -1548,7 +1347,7 @@ static void _debug_rap_stats(FILE *ostat)
             (float) total_bad_prop_vals[i] / (float) bad_props[i] :
             0.0;
         fprintf(ostat, "%-27s: %6.2f%% %6.2f%% %6.2f%% %3d %5.2f %5d %5.2f\n",
-                rap_names[i],
+                artp_name(prop),
                 (float) total_props_of_type * 100.0 / (float) num_randarts,
                 (float) good_props[i] * 100.0 / (float) num_randarts,
                 (float) bad_props[i] * 100.0 / (float) num_randarts,
@@ -1557,33 +1356,24 @@ static void _debug_rap_stats(FILE *ostat)
     }
 
     fprintf(ostat, "\n-----------------------------------------\n\n");
-    mpr("Results written into 'items.stat'.");
+    mpr("Results written into 'randart_stats.txt'.");
+    fclose(ostat);
 }
 
 void debug_item_statistics()
 {
-    FILE *ostat = fopen("items.stat", "a");
-
-    if (!ostat)
-    {
-        mprf(MSGCH_ERROR, "Can't write items.stat: %s", strerror(errno));
-        return;
-    }
-
     mpr("Generate stats for: [a] acquirement [b] randart properties");
     flush_prev_message();
 
     const int keyin = toalower(get_ch());
     switch (keyin)
     {
-    case 'a': _debug_acquirement_stats(ostat); break;
-    case 'b': _debug_rap_stats(ostat); break;
+    case 'a': _debug_acquirement_stats(); break;
+    case 'b': _debug_randart_stats(); break;
     default:
         canned_msg(MSG_OK);
         break;
     }
-
-    fclose(ostat);
 }
 
 void wizard_draw_card()
@@ -1668,5 +1458,15 @@ void wizard_recharge_evokers()
         evoker_debt(dummy.sub_type) = 0;
     }
     mpr("Evokers recharged.");
+}
+
+void wizard_unobtain_runes_and_orb()
+{
+    you.runes.reset();
+
+    you.chapter = CHAPTER_ORB_HUNTING;
+    invalidate_agrid(true);
+
+    mpr("Unobtained all runes and the Orb of Zot.");
 }
 #endif

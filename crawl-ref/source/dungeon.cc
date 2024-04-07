@@ -48,6 +48,7 @@
 #include "mapmark.h"
 #include "maps.h"
 #include "message.h"
+#include "misc.h"
 #include "mon-death.h"
 #include "mon-gear.h"
 #include "mon-pick.h"
@@ -112,7 +113,7 @@ static void _pick_float_exits(vault_placement &place,
                               vector<coord_def> &targets);
 static bool _feat_is_wall_floor_liquid(dungeon_feature_type);
 static bool _connect_spotty(const coord_def& from,
-                            bool (*overwriteable)(dungeon_feature_type) = nullptr);
+                            bool (*overwritable)(dungeon_feature_type) = nullptr);
 static bool _connect_vault_exit(const coord_def& exit);
 
 // VAULT FUNCTIONS
@@ -192,6 +193,7 @@ static void _mark_solid_squares();
 vector<vault_placement> Temp_Vaults;
 static unique_creature_list temp_unique_creatures;
 static FixedVector<unique_item_status_type, MAX_UNRANDARTS> temp_unique_items;
+static set<misc_item_type> temp_generated_misc;
 
 const map_bitmask *Vault_Placement_Mask = nullptr;
 
@@ -276,6 +278,8 @@ bool builder(bool enable_random_maps)
     // and accessible via &ctrl-l without this #define.
     msg::suppress quiet(MSGCH_DIAGNOSTICS);
 #endif
+    // you can use msg::force_stderr for doing debugging in automated scripts
+    // here; usually you want to condition it to a specific level.
 
     // Re-check whether we're in a valid place, it leads to obscure errors
     // otherwise.
@@ -297,8 +301,9 @@ bool builder(bool enable_random_maps)
     // TODO: why are these globals?
     // Save a copy of unique creatures for vetoes.
     temp_unique_creatures = you.unique_creatures;
-    // And unrands
+    // And unrands & misc items
     temp_unique_items = you.unique_items;
+    temp_generated_misc = you.generated_misc;
 
     unwind_bool levelgen(crawl_state.generating_level, true);
     rng::generator levelgen_rng(you.where_are_you);
@@ -340,6 +345,7 @@ bool builder(bool enable_random_maps)
                 get_uniq_map_names() = uniq_names;
                 you.unique_creatures = temp_unique_creatures;
                 you.unique_items = temp_unique_items;
+                you.generated_misc = temp_generated_misc;
 
                 // Because vault generation can be interrupted, this potentially
                 // leaves unlinked items kicking around, which triggers a lot
@@ -475,7 +481,8 @@ static bool _build_level_vetoable(bool enable_random_maps)
 
     _dgn_set_floor_colours();
 
-    if (crawl_state.game_standard_levelgen()
+    if (crawl_state.game_has_random_floors()
+        && !crawl_state.game_is_descent()
         && !_valid_dungeon_level())
     {
         return false;
@@ -772,6 +779,7 @@ void dgn_flush_map_memory()
     you.seen_weapon.init(0);
     you.seen_armour.init(0);
     you.seen_misc.reset();
+    you.seen_talisman.reset();
 }
 
 static void _dgn_load_colour_grid()
@@ -1013,7 +1021,7 @@ static bool _is_upwards_exit_stair(const coord_def &c)
     // Is this a valid upwards or exit stair out of a branch? In general,
     // ensure that each region has a stone stair up.
 
-    if (feature_mimic_at(c))
+    if (feature_mimic_at(c) || env.grid(c) == DNGN_EXIT_HELL)
         return false;
 
     if (feat_is_stone_stair_up(env.grid(c))
@@ -1028,8 +1036,6 @@ static bool _is_upwards_exit_stair(const coord_def &c)
     case DNGN_TRANSIT_PANDEMONIUM:
     case DNGN_EXIT_ABYSS:
         return true;
-    case DNGN_ENTER_HELL:
-        return parent_branch(you.where_are_you) == BRANCH_VESTIBULE;
     default:
         return false;
     }
@@ -1037,7 +1043,7 @@ static bool _is_upwards_exit_stair(const coord_def &c)
 
 static bool _is_exit_stair(const coord_def &c)
 {
-    if (feature_mimic_at(c))
+    if (feature_mimic_at(c) || env.grid(c) == DNGN_EXIT_HELL)
         return false;
 
     // Branch entries, portals, and abyss entries are not considered exit
@@ -1056,8 +1062,6 @@ static bool _is_exit_stair(const coord_def &c)
     case DNGN_TRANSIT_PANDEMONIUM:
     case DNGN_EXIT_ABYSS:
         return true;
-    case DNGN_ENTER_HELL:
-        return parent_branch(you.where_are_you) == BRANCH_VESTIBULE;
     default:
         return false;
     }
@@ -1138,7 +1142,7 @@ static int _process_disconnected_zones(int x1, int y1, int x2, int y2,
                 && (fill_small_zones <= 0 || zone_size <= fill_small_zones))
             {
                 // Don't fill in areas connected to vaults.
-                // We want vaults to be accessible; if the area is disconneted
+                // We want vaults to be accessible; if the area is disconnected
                 // from the rest of the level, this will cause the level to be
                 // vetoed later on.
                 bool veto = false;
@@ -1214,7 +1218,7 @@ static void _fill_small_disconnected_zones()
 {
     // debugging tip: change the feature to something like lava that will be
     // very noticeable.
-    // TODO: make even more agressive, up to ~25?
+    // TODO: make even more aggressive, up to ~25?
     _process_disconnected_zones(0, 0, GXM-1, GYM-1, true, DNGN_ROCK_WALL,
                                        _dgn_square_is_passable,
                                        _dgn_square_is_boring,
@@ -1228,7 +1232,7 @@ static void _fixup_hell_stairs()
         if (feat_is_stone_stair_up(env.grid(*ri))
             || env.grid(*ri) == DNGN_ESCAPE_HATCH_UP)
         {
-            _set_grd(*ri, DNGN_ENTER_HELL);
+            _set_grd(*ri, branches[you.where_are_you].escape_feature);
         }
     }
 }
@@ -1243,6 +1247,46 @@ static void _fixup_pandemonium_stairs()
             _set_grd(*ri, DNGN_TRANSIT_PANDEMONIUM);
         }
     }
+}
+
+static void _fixup_descent_hatches()
+{
+    for (rectangle_iterator ri(1); ri; ++ri)
+        if (env.grid(*ri) == DNGN_ESCAPE_HATCH_UP)
+            _set_grd(*ri, DNGN_FLOOR);
+}
+
+static void _dgn_place_feature_at_random_floor_square(dungeon_feature_type feat,
+                                                      unsigned mask = MMT_VAULT)
+{
+    coord_def place = _dgn_random_point_in_bounds(DNGN_FLOOR, mask, DNGN_FLOOR);
+    if (player_in_branch(BRANCH_SLIME))
+    {
+        int tries = 100;
+        while (!place.origin()  // stop if we fail to find floor.
+               && (dgn_has_adjacent_feat(place, DNGN_ROCK_WALL)
+                   || dgn_has_adjacent_feat(place, DNGN_SLIMY_WALL))
+               && tries-- > 0)
+        {
+            place = _dgn_random_point_in_bounds(DNGN_FLOOR, mask, DNGN_FLOOR);
+        }
+
+        if (tries < 0)  // tries == 0 means we succeeded on the last attempt
+            place.reset();
+    }
+    if (place.origin())
+        throw dgn_veto_exception("Cannot place feature at random floor square.");
+    else
+        _set_grd(place, feat);
+}
+
+static void _place_dungeon_exit()
+{
+    if (!player_in_branch(BRANCH_ZOT) || !at_branch_bottom())
+        return;
+
+    _dgn_place_feature_at_random_floor_square(
+                static_cast<dungeon_feature_type>(DNGN_EXIT_DUNGEON));
 }
 
 static void _mask_vault(const vault_placement &place, unsigned mask,
@@ -1291,13 +1335,12 @@ dgn_register_place(const vault_placement &place, bool register_vault)
         else
             _mask_vault(place, MMT_VAULT);
 
-        if (place.map.has_tag("passable"))
+        if (place.map.has_tag("passable") && player_in_branch(BRANCH_VAULTS))
         {
             // Ignore outside of Vaults -- creates too many bugs otherwise.
             // This tag is mainly to allow transporter vaults to work with
             // Vaults layout code.
-            if (player_in_branch(BRANCH_VAULTS))
-                _mask_vault(place, MMT_PASSABLE);
+            _mask_vault(place, MMT_PASSABLE);
         }
         else if (!transparent)
         {
@@ -1481,6 +1524,7 @@ void dgn_reset_level(bool enable_random_maps)
 
     you.unique_creatures = temp_unique_creatures;
     you.unique_items = temp_unique_items;
+    you.generated_misc = temp_generated_misc;
 
 #ifdef DEBUG_STATISTICS
     _you_all_vault_list.clear();
@@ -1543,28 +1587,6 @@ void dgn_reset_level(bool enable_random_maps)
     // Lose all listeners.
     dungeon_events.clear();
 
-    // Set default random monster generation rate (smaller is more often,
-    // except that 0 == no random monsters).
-    if (player_in_branch(BRANCH_TEMPLE)
-        && !player_on_orb_run() // except for the Orb run
-        || crawl_state.game_is_tutorial())
-    {
-        // No random monsters in tutorial or ecu temple
-        env.spawn_random_rate = 0;
-    }
-    else if (player_in_connected_branch()
-             || (player_on_orb_run() && !player_in_branch(BRANCH_ABYSS)))
-        env.spawn_random_rate = 240;
-    else if (player_in_branch(BRANCH_ABYSS)
-             || player_in_branch(BRANCH_PANDEMONIUM))
-    {
-        // Abyss spawn rate is set for those characters that start out in the
-        // Abyss; otherwise the number is ignored in the Abyss.
-        env.spawn_random_rate = 50;
-    }
-    else
-        // No random monsters in portal vaults if we don't have the orb.
-        env.spawn_random_rate = 0;
     env.density = 0;
     env.forest_awoken_until = 0;
 
@@ -1587,15 +1609,18 @@ static int _num_items_wanted(int absdepth0)
     if (branches[you.where_are_you].branch_flags & brflag::no_items)
         return 0;
     else if (absdepth0 > 5 && one_chance_in(500 - 5 * absdepth0))
-        return 10 + random2avg(85, 2); // rich level!
-    else if (absdepth0 < 3)
-        return 3 + roll_dice(3, 7); // thin loot on early floors
+        return 9 + random2avg(80, 2); // rich level!
     else
-        return 3 + roll_dice(3, 10);
+        return 3 + roll_dice(3, 9);
 }
 
 static int _mon_die_size()
 {
+    // This is a very goofy hack to maintain historical populations.
+    // TODO: remove this!
+    if (you.where_are_you == BRANCH_LAIR && you.depth == 5)
+        return DEFAULT_MON_DIE_SIZE;
+
     const int size = branches[you.where_are_you].mon_die_size;
     if (you.where_are_you != BRANCH_DUNGEON)
         return size;
@@ -2214,8 +2239,10 @@ static bool _add_connecting_escape_hatches()
         return true;
 
     // Veto D:1 or Pan if there are disconnected areas.
+    // Veto any  non-abyss descent level with disconnected areas
     if (player_in_branch(BRANCH_PANDEMONIUM)
-        || (player_in_branch(BRANCH_DUNGEON) && you.depth == 1))
+        || (player_in_branch(BRANCH_DUNGEON) && you.depth == 1)
+        || (crawl_state.game_is_descent() && !player_in_branch(BRANCH_ABYSS)))
     {
         // Allow == 0 in case the entire level is one opaque vault.
         return dgn_count_disconnected_zones(false) <= 1;
@@ -2243,6 +2270,8 @@ static bool _branch_entrances_are_connected()
     // stone stairs.
     for (rectangle_iterator ri(0); ri; ++ri)
     {
+        if (env.grid(*ri) == DNGN_ENTER_HELL)
+            continue;
         if (!feat_is_branch_entrance(env.grid(*ri)))
             continue;
         if (!_has_connected_stone_stairs_from(*ri))
@@ -2700,7 +2729,7 @@ static void _build_dungeon_level()
 
     // Try to place minivaults that really badly want to be placed. Still
     // no guarantees, seeing this is a minivault.
-    if (crawl_state.game_standard_levelgen())
+    if (crawl_state.game_has_random_floors())
     {
         if (place_vaults)
         {
@@ -2770,6 +2799,12 @@ static void _build_dungeon_level()
 
     if (player_in_hell())
         _fixup_hell_stairs();
+
+    if (crawl_state.game_is_descent())
+    {
+        _fixup_descent_hatches();
+        _place_dungeon_exit();
+    }
 }
 
 static void _dgn_set_floor_colours()
@@ -2955,10 +2990,10 @@ static bool _pan_level()
     if (which_demon >= 0)
     {
         vault = random_map_for_tag(pandemon_level_names[which_demon], false,
-                                   false, MB_FALSE);
+                                   false, false);
     }
     else
-        vault = random_map_in_depth(level_id::current(), false, MB_FALSE);
+        vault = random_map_in_depth(level_id::current(), false, false);
 
     // Every Pan level should have a primary vault.
     ASSERT(vault);
@@ -3050,10 +3085,10 @@ static const map_def *_dgn_random_map_for_place(bool minivault)
 
     if (!vault)
         // Pick a normal map
-        vault = random_map_for_place(lid, minivault, MB_FALSE);
+        vault = random_map_for_place(lid, minivault, false);
 
     if (!vault && lid.branch == root_branch && lid.depth == 1)
-        vault = random_map_for_tag("arrival", false, false, MB_FALSE);
+        vault = random_map_for_tag("arrival", false, false, false);
 
     return vault;
 }
@@ -3425,7 +3460,7 @@ static void _place_chance_vaults()
                 const string fallback_tag =
                     "fallback_" + chance_tag.substr(7); // "chance_"
                 const map_def *fallback =
-                    random_map_for_tag(fallback_tag, true, false, MB_FALSE);
+                    random_map_for_tag(fallback_tag, true, false, false);
                 if (fallback)
                 {
                     dprf(DIAG_DNGN, "Found fallback vault %s for chance tag %s",
@@ -3483,7 +3518,7 @@ static bool _builder_normal()
     }
 
     if (use_random_maps)
-        vault = random_map_in_depth(level_id::current(), false, MB_FALSE);
+        vault = random_map_in_depth(level_id::current(), false, false);
 
     if (vault)
     {
@@ -3561,30 +3596,6 @@ static void _place_traps()
         max_webs /= 2;
         place_webs(max_webs + random2(max_webs));
     }
-}
-
-static void _dgn_place_feature_at_random_floor_square(dungeon_feature_type feat,
-                                                      unsigned mask = MMT_VAULT)
-{
-    coord_def place = _dgn_random_point_in_bounds(DNGN_FLOOR, mask, DNGN_FLOOR);
-    if (player_in_branch(BRANCH_SLIME))
-    {
-        int tries = 100;
-        while (!place.origin()  // stop if we fail to find floor.
-               && (dgn_has_adjacent_feat(place, DNGN_ROCK_WALL)
-                   || dgn_has_adjacent_feat(place, DNGN_SLIMY_WALL))
-               && tries-- > 0)
-        {
-            place = _dgn_random_point_in_bounds(DNGN_FLOOR, mask, DNGN_FLOOR);
-        }
-
-        if (tries < 0)  // tries == 0 means we succeeded on the last attempt
-            place.reset();
-    }
-    if (place.origin())
-        throw dgn_veto_exception("Cannot place feature at random floor square.");
-    else
-        _set_grd(place, feat);
 }
 
 // Create randomly-placed stone stairs.
@@ -3747,6 +3758,15 @@ static bool _place_vault_by_tag(const string &tag)
     return _build_secondary_vault(vault);
 }
 
+static bool _in_descent_parent(branch_type branch)
+{
+    vector<branch_type> parents = descent_parents(branch);
+    for (branch_type parent : parents)
+        if (player_in_branch(parent))
+            return true;
+    return false;
+}
+
 static void _place_branch_entrances(bool use_vaults)
 {
     // Find what branch entrances are already placed, and what branch
@@ -3761,7 +3781,8 @@ static void _place_branch_entrances(bool use_vaults)
             && !is_hell_subbranch(it->id)
             && ((you.depth >= it->mindepth
                  && you.depth <= it->maxdepth)
-                || level_id::current() == brentry[it->id]))
+                || level_id::current() == brentry[it->id]
+                || crawl_state.game_is_descent()))
         {
             could_be_placed = true;
         }
@@ -3773,6 +3794,8 @@ static void _place_branch_entrances(bool use_vaults)
 
     for (rectangle_iterator ri(0); ri; ++ri)
     {
+        if (env.grid(*ri) == DNGN_ENTER_HELL)
+            continue;
         if (!feat_is_branch_entrance(env.grid(*ri)))
             continue;
 
@@ -3785,6 +3808,12 @@ static void _place_branch_entrances(bool use_vaults)
             }
     }
 
+    if (crawl_state.game_is_descent())
+    {
+        ASSERT(you.props.exists(DESCENT_WATER_BRANCH_KEY));
+        ASSERT(you.props.exists(DESCENT_POIS_BRANCH_KEY));
+    }
+
     // Place actual branch entrances.
     for (branch_iterator it; it; ++it)
     {
@@ -3793,9 +3822,24 @@ static void _place_branch_entrances(bool use_vaults)
         if (is_hell_branch(it->id) || branch_entrance_placed[it->id])
             continue;
 
-        if (it->entry_stairs != NUM_FEATURES
-            && player_in_branch(parent_branch(it->id))
-            && level_id::current() == brentry[it->id])
+        bool brentry_allowed = false;
+
+        if (crawl_state.game_is_descent())
+        {
+            brentry_allowed = it->entry_stairs != NUM_FEATURES
+                && _in_descent_parent(it->id)
+                && it->id != you.props[DESCENT_WATER_BRANCH_KEY].get_int()
+                && it->id != you.props[DESCENT_POIS_BRANCH_KEY].get_int()
+                && at_branch_bottom();
+        }
+        else
+        {
+            brentry_allowed = it->entry_stairs != NUM_FEATURES
+                && player_in_branch(parent_branch(it->id))
+                && level_id::current() == brentry[it->id];
+        }
+
+        if (brentry_allowed)
         {
             // Placing a stair.
             dprf(DIAG_DNGN, "Placing stair to %s", it->shortname);
@@ -3837,7 +3881,7 @@ static void _place_extra_vaults()
         if (!player_in_branch(BRANCH_DUNGEON) && use_random_maps)
         {
             const map_def *vault = random_map_in_depth(level_id::current(),
-                                                       false, MB_TRUE);
+                                                       false, true);
 
             // Encompass vaults can't be used as secondaries.
             if (!vault || vault->orient == MAP_ENCOMPASS)
@@ -3862,7 +3906,7 @@ static void _place_extra_vaults()
 static int _place_uniques()
 {
 #ifdef DEBUG_UNIQUE_PLACEMENT
-    FILE *ostat = fopen("unique_placement.log", "a");
+    FILE *ostat = fopen_u("unique_placement.log", "a");
     fprintf(ostat, "--- Looking to place uniques on %s\n",
                    level_id::current().describe().c_str());
 #endif
@@ -4075,6 +4119,7 @@ static void _builder_monsters()
         in_shoals ? DNGN_FLOOR : DNGN_UNSEEN;
 
     dprf(DIAG_DNGN, "_builder_monsters: Generating %d monsters", mon_wanted);
+    int success = 0;
     for (int i = 0; i < mon_wanted; i++)
     {
         mgen_data mg;
@@ -4106,7 +4151,8 @@ static void _builder_monsters()
         mg.flags    |= MG_PERMIT_BANDS;
         mg.map_mask |= MMT_NO_MONS;
         mg.preferred_grid_feature = preferred_grid_feature;
-        place_monster(mg);
+        if (place_monster(mg))
+            success++;
     }
 
     if (!player_in_branch(BRANCH_CRYPT)) // No water creatures in the Crypt.
@@ -4387,6 +4433,19 @@ vault_placement *dgn_vault_at(coord_def p)
                                           : env.level_vaults[map_index].get();
 }
 
+vault_placement *dgn_find_layout()
+{
+    // n.b.: following placement code, this checks the tag "overwritable" to
+    // determine whether something is a layout. Weirdly, essentially no code
+    // checks the "layout" tag.
+    // Given these cases, it may be possible for there to be more than one
+    // layout, in which case, this will find the first.
+    for (const auto &vp : env.level_vaults)
+        if (vp && vp->map.is_overwritable_layout())
+            return vp.get();
+    return nullptr;
+}
+
 void dgn_seen_vault_at(coord_def p)
 {
     if (vault_placement *vp = dgn_vault_at(p))
@@ -4455,6 +4514,9 @@ static const vault_placement *_build_vault_impl(const map_def *vault,
         if (player_in_branch(BRANCH_PANDEMONIUM) && dgn_zones > 1)
             throw dgn_veto_exception("Pan map with disconnected zones");
     }
+
+    if (crawl_state.game_is_descent() && vault->get_tags_unsorted().count("no_descent"))
+        throw dgn_veto_exception("Illegal map for descent");
 
     unwind_var<string> placing(env.placing_vault, vault->name);
 
@@ -4720,6 +4782,19 @@ static bool _apply_item_props(item_def &item, const item_spec &spec,
         // lambdas could let us do it without even changing the signature?
     }
 
+    // Ew. We should really pass this in to items() somehow.
+    if (spec.props.exists(NO_EXCLUDE_KEY) && spec.base_type == OBJ_MISCELLANY)
+    {
+        rng::subgenerator item_rng;
+        item.base_type = OBJ_MISCELLANY;
+        const auto typ = get_misc_item_type(spec.sub_type, false);
+        item.sub_type = typ;
+        you.generated_misc.insert(typ);
+        item_colour(item);
+        item_set_appearance(item);
+        ASSERT(item.is_valid());
+    }
+
     // Wipe item origin to remove "this is a god gift!" from there,
     // unless we're dealing with a corpse.
     if (!spec.corpselike())
@@ -4746,6 +4821,9 @@ static bool _apply_item_props(item_def &item, const item_spec &spec,
         item_colour(item);
     }
 
+    if (item.base_type == OBJ_GEMS)
+        item_colour(item);
+
     if (props.exists(USEFUL_KEY) && is_useless_item(item, false)
         && !allow_useless)
     {
@@ -4764,7 +4842,14 @@ static bool _apply_item_props(item_def &item, const item_spec &spec,
     if (props.exists(IDENT_KEY))
         item.flags |= props[IDENT_KEY].get_int();
     if (props.exists(UNOBTAINABLE_KEY))
+    {
         item.flags |= ISFLAG_UNOBTAINABLE;
+        if (is_unrandom_artefact(item) || is_xp_evoker(item))
+        {
+            destroy_item(item, true);
+            return false;
+        }
+    }
 
     if (props.exists(NO_PICKUP_KEY))
         item.flags |= ISFLAG_NO_PICKUP;
@@ -4796,66 +4881,81 @@ static object_class_type _superb_object_class()
             10, OBJ_JEWELLERY,
             10, OBJ_BOOKS,
             10, OBJ_STAVES,
-            10, OBJ_MISCELLANY);
+            10, OBJ_MISCELLANY,
+            1, OBJ_TALISMANS);
+}
+
+static int _concretize_level(int spec_level, int dgn_level)
+{
+    if (spec_level >= 0)
+        return spec_level;
+
+    if (dgn_level == INVALID_ABSDEPTH)
+        dgn_level = env.absdepth0;
+
+    switch (spec_level)
+    {
+    case ISPEC_DAMAGED:
+    case ISPEC_BAD:
+    case ISPEC_RANDART:
+        return spec_level;
+    case ISPEC_STAR:
+        return 5 + dgn_level * 2;
+    case ISPEC_SUPERB:
+        return ISPEC_GOOD_ITEM;
+    default:
+        return dgn_level;
+    }
+}
+
+static object_class_type _concretize_type(const item_spec &spec)
+{
+    if (spec.base_type != OBJ_RANDOM)
+        return spec.base_type;
+    if (spec.props.exists(MIMIC_KEY))
+        return get_random_item_mimic_type();
+    if (spec.level == ISPEC_SUPERB)
+    {
+        // an unobtainable superb misc item is guaranteed to fail to generate,
+        // so prevent it from the start
+        // n.b. used in exactly one place, see `grunt_nemelex_the_gamble`
+        object_class_type ret;
+        do
+        {
+            ret = _superb_object_class();
+        }
+        while (spec.props.exists(UNOBTAINABLE_KEY) && ret == OBJ_MISCELLANY);
+        return ret;
+    }
+    if (spec.level == ISPEC_ACQUIREMENT)
+        return shuffled_acquirement_classes(false)[0];
+    return spec.base_type;
+}
+
+static string _get_custom_name(const item_spec &spec)
+{
+    if (spec.props.exists(ITEM_NAME_KEY))
+        return spec.props[ITEM_NAME_KEY].get_string();
+    return "";
 }
 
 int dgn_place_item(const item_spec &spec,
                    const coord_def &where,
-                   int level)
+                   int dgn_level)
 {
     // Dummy object?
     if (spec.base_type == OBJ_UNASSIGNED)
         return NON_ITEM;
 
-    if (level == INVALID_ABSDEPTH)
-        level = env.absdepth0;
-
-    object_class_type base_type = spec.base_type;
-    bool acquire = false;
-
-    if (spec.level >= 0)
-        level = spec.level;
-    else
-    {
-        bool adjust_type = false;
-        switch (spec.level)
-        {
-        case ISPEC_DAMAGED:
-        case ISPEC_BAD:
-        case ISPEC_RANDART:
-            level = spec.level;
-            break;
-        case ISPEC_STAR:
-            level = 5 + level * 2;
-            break;
-        case ISPEC_SUPERB:
-            adjust_type = true;
-            level = ISPEC_GOOD_ITEM;
-            break;
-        case ISPEC_ACQUIREMENT:
-            adjust_type = true;
-            acquire = true;
-            break;
-        default:
-            break;
-        }
-
-        if (spec.props.exists(MIMIC_KEY) && base_type == OBJ_RANDOM)
-            base_type = get_random_item_mimic_type();
-        else if (adjust_type && base_type == OBJ_RANDOM)
-        {
-            base_type = acquire ? shuffled_acquirement_classes(false)[0]
-                                : _superb_object_class();
-        }
-    }
+    const int level = _concretize_level(spec.level, dgn_level);
+    const object_class_type base_type = _concretize_type(spec);
 
     int useless_tries = 0;
-
     while (true)
     {
         int item_made = NON_ITEM;
 
-        if (acquire)
+        if (spec.level == ISPEC_ACQUIREMENT)
         {
             item_made = acquirement_create_item(base_type,
                                                 spec.acquirement_source,
@@ -4869,8 +4969,13 @@ int dgn_place_item(const item_spec &spec,
                 item_made = _dgn_item_corpse(spec, where);
             else
             {
+                CrawlHashTable const *fixed_props = nullptr;
+                if (spec.props.exists(FIXED_PROPS_KEY))
+                    fixed_props = &spec.props[FIXED_PROPS_KEY].get_table();
+
                 item_made = items(spec.allow_uniques, base_type,
-                                  spec.sub_type, level, spec.ego);
+                                  spec.sub_type, level, spec.ego, NO_AGENT,
+                                  _get_custom_name(spec), fixed_props);
 
                 if (spec.level == ISPEC_MUNDANE)
                     squash_plusses(item_made);
@@ -4879,29 +4984,26 @@ int dgn_place_item(const item_spec &spec,
 
         if (item_made == NON_ITEM || item_made == -1)
             return NON_ITEM;
-        else
-        {
-            item_def &item(env.item[item_made]);
-            item.pos = where;
 
-            if (_apply_item_props(item, spec, (useless_tries >= 10), false))
-            {
-                dprf(DIAG_DNGN, "vault spec: placing %s at %d,%d",
-                    env.item[item_made].name(DESC_INVENTORY, false, true).c_str(),
-                    where.x, where.y);
-                env.level_map_mask(where) |= MMT_NO_TRAP;
-                return item_made;
-            }
-            else
-            {
-                // _apply_item_props will not generate a rune you already have,
-                // so don't bother looping.
-                if (base_type == OBJ_RUNES)
-                    return NON_ITEM;
-                useless_tries++;
-            }
+        item_def &item(env.item[item_made]);
+        item.pos = where;
+
+        if (_apply_item_props(item, spec, useless_tries >= 10, false))
+        {
+            dprf(DIAG_DNGN, "vault spec: placing %s at %d,%d",
+                env.item[item_made].name(DESC_INVENTORY, false, true).c_str(),
+                where.x, where.y);
+            env.level_map_mask(where) |= MMT_NO_TRAP;
+            return item_made;
         }
 
+        // _apply_item_props will not generate a rune you already have,
+        // so don't bother looping.
+        // also, if the allow_useless flag above fails a bunch, just give up.
+        // XX is 20 tries reasonable?
+        if (base_type == OBJ_RUNES || useless_tries >= 20)
+            return NON_ITEM;
+        useless_tries++;
     }
 
 }
@@ -4926,24 +5028,6 @@ static void _dgn_place_item_explicit(int index, const coord_def& where,
 
     const item_spec spec = sitems.get_item(index);
     dgn_place_item(spec, where);
-}
-
-static void _give_animated_weapon_ammo(monster &mon)
-{
-    const item_def *launcher = mon.launcher();
-    if (!launcher)
-        return;
-
-    const item_def *missiles = mon.missiles();
-    if (missiles && missiles->launched_by(*launcher))
-        return;
-
-    const int ammo_type = fires_ammo_type(*launcher);
-    const int thing_created = items(false, OBJ_MISSILES, ammo_type, 1);
-    if (thing_created == NON_ITEM)
-        return;
-
-    give_specific_item(&mon, thing_created);
 }
 
 static void _dgn_give_mon_spec_items(mons_spec &mspec, monster *mon)
@@ -4979,30 +5063,8 @@ static void _dgn_give_mon_spec_items(mons_spec &mspec, monster *mon)
                 spec.ego = SP_FORBID_EGO;
         }
 
-        int item_level = mspec.place.absdepth();
-
-        if (spec.level >= 0)
-            item_level = spec.level;
-        else
-        {
-            // TODO: merge this with the equivalent switch in dgn_place_item,
-            // and maybe even handle ISPEC_ACQUIREMENT.
-            switch (spec.level)
-            {
-            case ISPEC_STAR:
-                item_level = 5 + item_level * 2;
-                break;
-            case ISPEC_SUPERB:
-                item_level = ISPEC_GOOD_ITEM;
-                break;
-            case ISPEC_DAMAGED:
-            case ISPEC_BAD:
-            case ISPEC_RANDART:
-                item_level = spec.level;
-                break;
-            }
-        }
-
+        const int item_level = _concretize_level(spec.level,
+                                                 mspec.place.absdepth());
         for (int useless_tries = 0; true; useless_tries++)
         {
             int item_made;
@@ -5011,9 +5073,13 @@ static void _dgn_give_mon_spec_items(mons_spec &mspec, monster *mon)
                 item_made = _dgn_item_corpse(spec, mon->pos());
             else
             {
+                CrawlHashTable const *fixed_props = nullptr;
+                if (spec.props.exists(FIXED_PROPS_KEY))
+                    fixed_props = &spec.props[FIXED_PROPS_KEY].get_table();
+
                 item_made = items(spec.allow_uniques, spec.base_type,
-                                  spec.sub_type, item_level,
-                                  spec.ego);
+                                  spec.sub_type, item_level, spec.ego, NO_AGENT,
+                                  _get_custom_name(spec), fixed_props);
 
                 if (spec.level == ISPEC_MUNDANE)
                     squash_plusses(item_made);
@@ -5041,13 +5107,8 @@ static void _dgn_give_mon_spec_items(mons_spec &mspec, monster *mon)
     if (mon->inv[MSLOT_WEAPON] == NON_ITEM
         && mon->inv[MSLOT_ALT_WEAPON] != NON_ITEM)
     {
-        mon->swap_weapons(MB_FALSE);
+        mon->swap_weapons(false);
     }
-
-    // Make dancing launchers less pathetic.
-    // XX this should be done on creation, not placement?
-    if (mons_class_is_animated_weapon(mon->type))
-        _give_animated_weapon_ammo(*mon);
 }
 
 static bool _should_veto_unique(monster_type type)
@@ -5083,12 +5144,29 @@ monster* dgn_place_monster(mons_spec &mspec, coord_def where,
         if (brdepth[mspec.place.branch] > 1)
         {
             if (type == RANDOM_SUPER_OOD)
-                mspec.place.depth = mspec.place.depth * 2 + 4; // TODO: why?
-            else if (type == RANDOM_MODERATE_OOD)
-                mspec.place.depth += 5;
+            {
+                // Super OODs use 2*depth + 4 which goes very deep, generating
+                // a guaranteed "boss" for vaultsmiths to use. In dungeon it
+                // ramps up slowly from 2*depth in the range D:1-8 (becoming
+                // deeper than a moderate OOD a from D:6-) to the full meaning
+                // at D:12.
+                int plus = 4;
+                if (mspec.place.branch == BRANCH_DUNGEON)
+                    plus = max(0, min(mspec.place.depth - 8, 4));
 
-            if (mspec.place.branch == BRANCH_DUNGEON && starting_depth <= 8)
-                mspec.place.depth = min(mspec.place.depth, starting_depth * 2);
+                mspec.place.depth = mspec.place.depth * 2 + plus;
+            }
+            else if (type == RANDOM_MODERATE_OOD)
+            {
+                mspec.place.depth += 5;
+                // From D:1-4 moderate OODs are capped at depth * 2, starting
+                // on D:5 this cap no longer does anything.
+                if (mspec.place.branch == BRANCH_DUNGEON)
+                {
+                    mspec.place.depth = min(mspec.place.depth,
+                                            starting_depth * 2);
+                }
+            }
         }
         fuzz_ood = false;
         type = RANDOM_MONSTER;
@@ -5143,9 +5221,6 @@ monster* dgn_place_monster(mons_spec &mspec, coord_def where,
         break;
     case ATT_GOOD_NEUTRAL:
         mg.behaviour = BEH_GOOD_NEUTRAL;
-        break;
-    case ATT_STRICT_NEUTRAL:
-        mg.behaviour = BEH_STRICT_NEUTRAL;
         break;
     default:
         break;
@@ -5225,7 +5300,7 @@ monster* dgn_place_monster(mons_spec &mspec, coord_def where,
     if (mspec.props.exists(MONSTER_TILE_KEY))
     {
         mons->props[MONSTER_TILE_KEY] =
-            mspec.props[MONSTER_TILE_KEY].get_short();
+            mspec.props[MONSTER_TILE_KEY].get_int();
     }
     if (mspec.props.exists(MONSTER_TILE_NAME_KEY))
     {
@@ -5629,22 +5704,39 @@ static void _jtd_init_surrounds(coord_set &coords, uint32_t mapmask,
         {
             continue;
         }
-        cur.insert(cur.begin() + random2(cur.size()), *ai);
+        // randomize the order in which we visit orthogonal directions
+        cur.insert(cur.begin() + random2(cur.size() + 1), *ai);
     }
     for (auto cc : cur)
     {
         coords.insert(cc);
 
         const coord_def dp = cc - c;
+        // pack the orthogonal coord dp into an int in a slightly silly way.
+        // 0, -1: 11
+        // 0, 1:  9
+        // -1, 0: 14
+        // 1, 0:  6
         travel_point_distance[cc.x][cc.y] = (-dp.x + 2) * 4 + (-dp.y + 2);
     }
 }
+
+// #define DEBUG_JTD
+
+// pathfinding from `from` to `to` using only orthogonal directions, and
+// avoiding `mapmask`. Used by many layouts to ensure connectivity with
+// rogue-ish hallways. Also used in some layouts where hallways aren't really
+// the goal (e.g. shoals), there by a direct call to the pathfinding. Also used
+// to connect to vault entrances.
 
 // Resets travel_point_distance
 vector<coord_def> dgn_join_the_dots_pathfind(const coord_def &from,
                                              const coord_def &to,
                                              uint32_t mapmask)
 {
+    // isolate this rng to keep layouts that use it more stable -- it has an
+    // arbitrary number of draws, so is quite unpredictable otherwise
+    rng::subgenerator jtd_rng;
     memset(travel_point_distance, 0, sizeof(travel_distance_grid_t));
     const coord_comparator comp(to);
     coord_set coords(comp);
@@ -5654,7 +5746,9 @@ vector<coord_def> dgn_join_the_dots_pathfind(const coord_def &from,
     while (true)
     {
         int &tpd = travel_point_distance[curr.x][curr.y];
-        tpd = !tpd? -1000 : -tpd;
+        // flip the sign of the path we are actually following. Used paths end
+        // up negative, unused paths, positive. -1000 is the starting point.
+        tpd = !tpd ? -1000 : -tpd;
 
         if (curr == to)
             break;
@@ -5671,28 +5765,82 @@ vector<coord_def> dgn_join_the_dots_pathfind(const coord_def &from,
     if (curr != to)
         return path;
 
+#ifdef DEBUG_JTD
+    // dprfs the travel_point_distance grid found by the above loop
+    string head;
+    coord_def tpd_min(1000,1000);
+    coord_def tpd_max(0,0);
+    for (rectangle_iterator ri(0); ri; ++ri)
+    {
+        if (travel_point_distance[ri->x][ri->y] != 0)
+        {
+            tpd_min.x = min(ri->x, tpd_min.x);
+            tpd_min.y = min(ri->y, tpd_min.y);
+            tpd_max.x = max(ri->x, tpd_max.x);
+            tpd_max.y = max(ri->y, tpd_max.y);
+        }
+    }
+    for (int ix = tpd_min.x; ix <= tpd_max.x; ix++)
+        head += make_stringf("(%2d)", ix);
+    dprf("/////%s", head.c_str()); // `/`s are there to prevent a split
+
+    for (int iy = tpd_min.y; iy <= tpd_max.y; iy++)
+    {
+        string s;
+        for (int ix = tpd_min.x; ix <= tpd_max.x; ix++)
+        {
+            s += (travel_point_distance[ix][iy] == -1000
+                    ? "   X" // starting point
+                    : make_stringf(" %3d", travel_point_distance[ix][iy]));
+        }
+        dprf("(%2d)%s", iy, s.c_str());
+    }
+#endif
+
+    // traverse the path found above (indicated by negative values) *in reverse
+    // order*.
     while (curr != from)
     {
         if (!map_masked(curr, mapmask))
+        {
             path.push_back(curr);
+#ifdef DEBUG_JTD
+            env.pgrid(curr) |= FPROP_HIGHLIGHT;
+#endif
+        }
 
         const int dist = travel_point_distance[curr.x][curr.y];
         ASSERT(dist < 0);
         ASSERT(dist != -1000);
+        // unpack the (orthogonal) direction to move from an int. There's an
+        // intentional sign flip here since are moving in reverse. Note that
+        // this also relies on some silly int rounding to simplify reversing
+        // the packing formula from _jtd_init_surrounds.
+        // original => packed => unpacked
+        // 0, -1    => 11     => 0,1
+        // 0, 1     => 9      => 0,-1
+        // -1, 0    => 14     => 1,0
+        // 1, 0     => 6      => -1,0
         curr += coord_def(-dist / 4 - 2, (-dist % 4) - 2);
+
     }
     if (!map_masked(curr, mapmask))
+    {
+#ifdef DEBUG_JTD
+        env.pgrid(curr) |= FPROP_HIGHLIGHT;
+#endif
         path.push_back(curr);
+    }
 
     return path;
 }
 
 bool join_the_dots(const coord_def &from, const coord_def &to,
                    uint32_t mapmask,
-                   bool (*overwriteable)(dungeon_feature_type))
+                   bool (*overwritable)(dungeon_feature_type))
 {
-    if (!overwriteable)
-        overwriteable = _feat_is_wall_floor_liquid;
+    if (!overwritable)
+        overwritable = _feat_is_wall_floor_liquid;
 
     const vector<coord_def> path =
         dgn_join_the_dots_pathfind(from, to, mapmask);
@@ -5700,7 +5848,7 @@ bool join_the_dots(const coord_def &from, const coord_def &to,
     for (auto c : path)
     {
         auto feat = env.grid(c);
-        if (!map_masked(c, mapmask) && overwriteable(feat))
+        if (!map_masked(c, mapmask) && overwritable(feat))
         {
             env.grid(c) = DNGN_FLOOR;
             dgn_height_set_at(c);
@@ -5811,13 +5959,6 @@ static dungeon_feature_type _pick_an_altar()
     return altar_for_god(god);
 }
 
-static bool _shop_sells_antiques(shop_type type)
-{
-    return type == SHOP_WEAPON_ANTIQUE
-            || type == SHOP_ARMOUR_ANTIQUE
-            || type == SHOP_GENERAL_ANTIQUE;
-}
-
 void place_spec_shop(const coord_def& where, shop_type force_type)
 {
     shop_spec spec(force_type);
@@ -5826,7 +5967,7 @@ void place_spec_shop(const coord_def& where, shop_type force_type)
 
 int greed_for_shop_type(shop_type shop, int level_number)
 {
-    if (_shop_sells_antiques(shop))
+    if (!shoptype_identifies_stock(shop))
     {
         const int rand = random2avg(19, 2);
         return 15 + rand + random2(level_number);
@@ -5909,7 +6050,7 @@ static int _shop_num_items(const shop_spec &spec)
  */
 static int _choose_shop_item_level(shop_type shop_type_, int level_number)
 {
-    const int shop_multiplier = _shop_sells_antiques(shop_type_) ? 3 : 2;
+    const int shop_multiplier = shoptype_identifies_stock(shop_type_) ? 2 : 3;
     const int base_level = level_number
                             + random2((level_number + 1) * shop_multiplier);
 
@@ -6039,11 +6180,11 @@ static void _stock_shop_item(int j, shop_type shop_type_,
         stocked[item.sub_type]++;
 
     // Identify the item, unless we don't do that.
-    if (!_shop_sells_antiques(shop_type_))
+    if (shoptype_identifies_stock(shop_type_))
         set_ident_flags(item, ISFLAG_IDENT_MASK);
 
     // Now move it into the shop!
-    dec_mitm_item_quantity(item_index, item.quantity);
+    dec_mitm_item_quantity(item_index, item.quantity, false);
     item.pos = shop.pos;
     item.link = ITEM_IN_SHOP;
     shop.stock.push_back(item);
@@ -6123,6 +6264,8 @@ object_class_type item_in_shop(shop_type shop_type)
         return OBJ_RANDOM;
 
     case SHOP_JEWELLERY:
+        if (one_chance_in(10))
+            return OBJ_TALISMANS;
         return OBJ_JEWELLERY;
 
     case SHOP_BOOK:
@@ -6164,14 +6307,14 @@ static bool _feat_is_wall_floor_liquid(dungeon_feature_type feat)
 // It might be better to aim for a more open connection -- currently
 // it stops pretty much as soon as connectivity is attained.
 static set<coord_def> _dgn_spotty_connect_path(const coord_def& from,
-            bool (*overwriteable)(dungeon_feature_type))
+            bool (*overwritable)(dungeon_feature_type))
 {
     set<coord_def> flatten;
     set<coord_def> border;
     bool success = false;
 
-    if (!overwriteable)
-        overwriteable = _feat_is_wall_floor_liquid;
+    if (!overwritable)
+        overwritable = _feat_is_wall_floor_liquid;
 
     for (adjacent_iterator ai(from); ai; ++ai)
         if (!map_masked(*ai, MMT_VAULT) && _spotty_seed_ok(*ai))
@@ -6193,7 +6336,7 @@ static set<coord_def> _dgn_spotty_connect_path(const coord_def& from,
             if (env.grid(*ai) == DNGN_FLOOR)
                 success = true; // Through, but let's remove the others, too.
 
-            if (!overwriteable(env.grid(*ai)) || flatten.count(*ai))
+            if (!overwritable(env.grid(*ai)) || flatten.count(*ai))
                 continue;
 
             flatten.insert(*ai);
@@ -6216,10 +6359,10 @@ static set<coord_def> _dgn_spotty_connect_path(const coord_def& from,
 }
 
 static bool _connect_spotty(const coord_def& from,
-                            bool (*overwriteable)(dungeon_feature_type))
+                            bool (*overwritable)(dungeon_feature_type))
 {
     const set<coord_def> spotty_path =
-        _dgn_spotty_connect_path(from, overwriteable);
+        _dgn_spotty_connect_path(from, overwritable);
 
     if (!spotty_path.empty())
     {
@@ -7430,6 +7573,11 @@ static void _mark_solid_squares()
 int starting_absdepth()
 {
     if (you.char_class == JOB_DELVER)
+    {
+        // makes delver sort of work in descent
+        if (crawl_state.game_is_descent())
+            return 1;
         return 4;
+    }
     return 0; // (absdepth is 0-indexed)
 }

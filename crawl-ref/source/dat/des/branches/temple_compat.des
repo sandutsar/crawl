@@ -1,7 +1,7 @@
 # temple_compat.des
 #
 # When cc390b852004c86 updated / revised / combined / renamed
-# a great deal of map variations, this screwed with save compatability:
+# a great deal of map variations, this screwed with save compatibility:
 # Crawl decides what temple map to use at the beginning of the game,
 # and most of the maps were made inaccessible by name. While Crawl can
 # still recover from this, it still quite easily means a dearth of gods
@@ -9,6 +9,8 @@
 # keeps around Temple maps from before that commit so games made before
 # that transfer that didn't make it to Temple can still have a map as
 # the game expected.
+#
+# These should not have the tags like in temple.des
 #
 # If other temple maps are removed in future commits, they should also
 # go here. This file can be cut when TAG_MAJOR_VERSION > 34.

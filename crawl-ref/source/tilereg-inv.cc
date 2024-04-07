@@ -7,6 +7,7 @@
 #include "cio.h"
 #include "describe.h"
 #include "env.h"
+#include "evoke.h"
 #include "tile-env.h"
 #include "invent.h"
 #include "item-name.h"
@@ -56,7 +57,7 @@ void InventoryRegion::pack_buffers()
                 tileidx_t t = tile_env.default_flavour.floor + i % num_floor;
                 m_buf.add_dngn_tile(t, x, y);
             }
-            else
+            else if (!tiles.is_using_small_layout())
                 m_buf.add_main_tile(TILE_ITEM_SLOT, x, y);
         }
     }
@@ -110,9 +111,9 @@ void InventoryRegion::pack_buffers()
                 draw_number(x, y, item.quantity);
 
             if (item.special)
-                m_buf.add_main_tile(item.special, x, y, 0, 0);
+                m_buf.add_special_tile(item.special, x, y, 0, 0);
 
-            if (item.flag & TILEI_FLAG_INVALID)
+            if (item.flag & TILEI_FLAG_INVALID && !tiles.is_using_small_layout())
                 m_buf.add_icons_tile(TILEI_MESH, x, y);
         }
     }
@@ -149,12 +150,6 @@ int InventoryRegion::handle_mouse(wm_mouse_event &event)
 
     ASSERT(idx >= 0);
 
-    if (tiles.is_using_small_layout())
-    {
-        // close the inventory tab after successfully clicking on an item
-        tiles.deactivate_tab();
-    }
-
     // TODO enne - this is all really only valid for the on-screen inventory
     // Do we subclass InventoryRegion for the onscreen and offscreen versions?
     char key = m_items[item_idx].key;
@@ -171,7 +166,7 @@ int InventoryRegion::handle_mouse(wm_mouse_event &event)
         {
             if (event.mod & TILES_MOD_SHIFT)
                 tile_item_drop(idx, (event.mod & TILES_MOD_CTRL));
-            else if (event.mod & TILES_MOD_CTRL)
+            if (event.mod & TILES_MOD_CTRL)
                 tile_item_use_secondary(idx);
             else
                 tile_item_use(idx);
@@ -203,8 +198,12 @@ int InventoryRegion::handle_mouse(wm_mouse_event &event)
 static bool _is_true_equipped_item(const item_def &item)
 {
     // Weapons and staves are only truly equipped if wielded.
-    if (item.link == you.equip[EQ_WEAPON])
-        return is_weapon(item);
+    if (is_weapon(item))
+    {
+        return item.link == you.equip[EQ_WEAPON]
+               || you.has_mutation(MUT_WIELD_OFFHAND)
+               && item.link == you.equip[EQ_OFFHAND];
+    }
 
     // Cursed armour and rings are only truly equipped if *not* wielded.
     return item.link != you.equip[EQ_WEAPON];
@@ -221,32 +220,13 @@ static bool _can_use_item(const item_def &item, bool equipped)
 #endif
 
     if (equipped && item.cursed())
-    {
-        // Evocable items (e.g. dispater staff) are still evocable when cursed.
-        if (item_is_evokable(item))
-            return true;
-
-        // You can't unwield/fire a wielded cursed weapon/staff
-        // but cursed armour and rings can be unwielded without problems.
-        return !_is_true_equipped_item(item);
-    }
+        return false; // stuck!
 
     if (!you.can_drink())
         return item.base_type != OBJ_POTIONS;
 
     // In all other cases you can use the item in some way.
     return true;
-}
-
-static void _handle_wield_tip(string &tip, vector<command_type> &cmd,
-                              const string prefix = "", bool unwield = false)
-{
-    tip += prefix;
-    if (unwield)
-        tip += "Unwield (%-)";
-    else
-        tip += "Wield (%)";
-    cmd.push_back(CMD_WIELD_WEAPON);
 }
 
 bool InventoryRegion::update_tab_tip_text(string &tip, bool active)
@@ -352,9 +332,9 @@ bool InventoryRegion::update_tip_text(string& tip)
             string tmp = "";
             if (equipped)
             {
-                if (wielded && !item_is_evokable(item))
+                if (wielded)
                 {
-                    if (type == OBJ_JEWELLERY || type == OBJ_ARMOUR
+                    if (type == OBJ_JEWELLERY || type == OBJ_ARMOUR // ???
                         || is_weapon(item))
                     {
                         type = OBJ_WEAPONS + EQUIP_OFFSET;
@@ -371,24 +351,23 @@ bool InventoryRegion::update_tip_text(string& tip)
             case OBJ_STAVES:
                 if (!you.has_mutation(MUT_NO_GRASPING))
                 {
-                    _handle_wield_tip(tmp, cmd);
-                    if (is_throwable(&you, item))
+                    tmp += "Wield (%)";
+                    cmd.push_back(CMD_WIELD_WEAPON);
+                    if (you.has_mutation(MUT_WIELD_OFFHAND)
+                        && you.hands_reqd(item) == HANDS_ONE)
                     {
-                        tmp += "\n[Ctrl + L-Click] Fire (f)";
-                        cmd.push_back(CMD_FIRE);
+                        tmp += "\n[Ctrl + L-Click] Offhand";
                     }
                 }
                 break;
             case OBJ_WEAPONS + EQUIP_OFFSET:
-                _handle_wield_tip(tmp, cmd, "", true);
-                if (is_throwable(&you, item))
-                {
-                    tmp += "\n[Ctrl + L-Click] Fire (f)";
-                    cmd.push_back(CMD_FIRE);
-                }
+                tmp += "Unwield (%-)";
+                cmd.push_back(CMD_WIELD_WEAPON);
                 break;
             case OBJ_MISCELLANY:
-                tmp += "Evoke (V)";
+            case OBJ_WANDS:
+            case OBJ_TALISMANS:
+                tmp += "Evoke (%)";
                 cmd.push_back(CMD_EVOKE);
                 break;
             case OBJ_ARMOUR:
@@ -415,45 +394,18 @@ bool InventoryRegion::update_tip_text(string& tip)
                 {
                     tmp += "Fire (%)";
                     cmd.push_back(CMD_FIRE);
-
-                    if (wielded || you.can_wield(item))
-                        _handle_wield_tip(tmp, cmd, "\n[Ctrl + L-Click] ", wielded);
                 }
                 break;
-            case OBJ_WANDS:
-                tmp += "Evoke (%)";
-                cmd.push_back(CMD_EVOKE);
-                if (wielded)
-                    _handle_wield_tip(tmp, cmd, "\n[Ctrl + L-Click] ", true);
-                break;
-            case OBJ_BOOKS:
-                if (item_type_known(item) && item_is_spellbook(item)
-                    && can_learn_spell(true))
-                {
-                    tmp += "Memorise (%)";
-                    cmd.push_back(CMD_MEMORISE_SPELL);
-                    if (wielded)
-                        _handle_wield_tip(tmp, cmd, "\n[Ctrl + L-Click] ", true);
-                    break;
-                }
-                if (item.sub_type == BOOK_MANUAL)
-                    break;
-                // else fall-through
             case OBJ_SCROLLS:
                 tmp += "Read (%)";
                 cmd.push_back(CMD_READ);
-                if (wielded)
-                    _handle_wield_tip(tmp, cmd, "\n[Ctrl + L-Click] ", true);
                 break;
             case OBJ_POTIONS:
                 tmp += "Quaff (%)";
                 cmd.push_back(CMD_QUAFF);
-                if (wielded)
-                    _handle_wield_tip(tmp, cmd, "\n[Ctrl + L-Click] ", true);
                 break;
             case OBJ_CORPSES:
-                if (wielded)
-                    _handle_wield_tip(tmp, cmd, "\n[Ctrl + L-Click] ", true);
+            case OBJ_BOOKS:
                 break;
             default:
                 tmp += "Use";
@@ -577,7 +529,7 @@ static void _fill_item_info(InventoryTile &desc, const item_def &item)
         desc.quantity = -1;
 
     if (type == OBJ_WEAPONS || type == OBJ_MISSILES
-        || type == OBJ_ARMOUR
+        || type == OBJ_ARMOUR || item.base_type == OBJ_STAVES
 #if TAG_MAJOR_VERSION == 34
         || type == OBJ_RODS
 #endif
@@ -585,8 +537,6 @@ static void _fill_item_info(InventoryTile &desc, const item_def &item)
     {
         desc.special = tileidx_known_brand(item);
     }
-    else if (type == OBJ_CORPSES)
-        desc.special = tileidx_corpse_brand(item);
 
     desc.flag = 0;
     if (item.cursed())
@@ -717,6 +667,15 @@ void InventoryRegion::update()
                 }
             }
         }
+        if (tiles.is_using_small_layout())
+        {
+            // Leave only one row of floor items for small layout
+            while ((int)m_items.size() < mx * (my-1))
+            {
+                InventoryTile desc;
+                m_items.push_back(desc);
+            }
+        }
     }
 
     // Then, as many ground items as we can fit.
@@ -754,14 +713,17 @@ void InventoryRegion::update()
         }
     } while (s);
 
-    while ((int)m_items.size() < mx * my)
-        // let's not do this for p2 either
+    if (!tiles.is_using_small_layout())
     {
-        InventoryTile desc;
-        desc.flag = TILEI_FLAG_FLOOR;
-        if (disable_all)
-            desc.flag |= TILEI_FLAG_INVALID;
-        m_items.push_back(desc);
+        while ((int)m_items.size() < mx * my)
+            // let's not do this for p2 either
+        {
+            InventoryTile desc;
+            desc.flag = TILEI_FLAG_FLOOR;
+            if (disable_all)
+                desc.flag |= TILEI_FLAG_INVALID;
+            m_items.push_back(desc);
+        }
     }
 }
 

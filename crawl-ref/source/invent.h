@@ -14,41 +14,10 @@
 #include "item-name.h"
 #include "item-prop-enum.h"
 #include "menu.h"
+#include "object-selector-type.h"
 #include "operation-types.h"
 #include "tag-version.h"
 
-enum object_selector
-{
-    OSEL_ANY                     =  -1,
-    OSEL_WIELD                   =  -2,
-    OSEL_UNIDENT                 =  -3,
-#if TAG_MAJOR_VERSION == 34
-    OSEL_RECHARGE                =  -4,
-#endif
-    OSEL_ENCHANTABLE_ARMOUR      =  -5,
-    OSEL_BEOGH_GIFT              =  -6,
-#if TAG_MAJOR_VERSION == 34
-    OSEL_DRAW_DECK               =  -7,
-#endif
-    OSEL_THROWABLE               =  -8,
-    OSEL_EVOKABLE                =  -9,
-    OSEL_WORN_ARMOUR             = -10,
-    OSEL_CURSED_WORN             = -11,
-#if TAG_MAJOR_VERSION == 34
-    OSEL_UNCURSED_WORN_ARMOUR    = -12,
-    OSEL_UNCURSED_WORN_JEWELLERY = -13,
-#endif
-    OSEL_BRANDABLE_WEAPON        = -14,
-    OSEL_ENCHANTABLE_WEAPON      = -15,
-    OSEL_BLESSABLE_WEAPON        = -16,
-    OSEL_CURSABLE                = -17, // Items that are worn and cursable
-#if TAG_MAJOR_VERSION == 34
-    OSEL_DIVINE_RECHARGE         = -18,
-#endif
-    OSEL_UNCURSED_WORN_RINGS     = -19,
-    OSEL_QUIVER_ACTION           = -20,
-    OSEL_QUIVER_ACTION_FORCE     = -21,
-};
 
 /// Behaviour flags for prompt_invent_item().
 enum class invprompt_flag
@@ -95,7 +64,7 @@ class InvTitle : public MenuEntry
 public:
     InvTitle(Menu *mn, const string &title, invtitle_annotator tfn);
 
-    string get_text(const bool = false) const override;
+    string get_text() const override;
 
 private:
     Menu *m;
@@ -113,18 +82,16 @@ private:
     mutable string dbname;
 
 protected:
-    static bool show_cursor;
     // Should we show the floor tile, etc?
     bool show_background = true;
+    string _get_text_preface() const override;
 
 public:
     const item_def *item;
 
     InvEntry(const item_def &i);
-    string get_text(const bool need_cursor = false) const override;
     void set_show_glyph(bool doshow);
     void set_show_coordinates(bool doshow);
-    static void set_show_cursor(bool doshow);
 
     const string &get_basename() const;
     const string &get_qualname() const;
@@ -136,10 +103,7 @@ public:
     bool         is_art() const;
     bool         is_equipped() const;
 
-    virtual int highlight_colour() const override
-    {
-        return menu_colour(get_text(), item_prefix(*item), tag);
-    }
+    virtual int highlight_colour(bool temp=false) const override;
 
     virtual void select(int qty = -1) override;
     void set_star(bool);
@@ -180,12 +144,14 @@ public:
     // NOTE: Does not set menu title, ever! You *must* set the title explicitly
     menu_letter load_items(const vector<const item_def*> &items,
                            function<MenuEntry* (MenuEntry*)> procfn = nullptr,
-                           menu_letter ckey = 'a', bool sort = true);
+                           menu_letter ckey = 'a', bool sort = true,
+                           bool subkeys = false);
 
     // Make sure this menu does not outlive items, or mayhem will ensue!
     menu_letter load_items(const vector<item_def>& items,
                            function<MenuEntry* (MenuEntry*)> procfn = nullptr,
-                           menu_letter ckey = 'a', bool sort = true);
+                           menu_letter ckey = 'a', bool sort = true,
+                           bool subkeys = false);
 
     // Loads items from the player's inventory into the menu, and sets the
     // title to the stock title. If "procfn" is provided, it'll be called for
@@ -203,8 +169,10 @@ public:
 
 protected:
     void do_preselect(InvEntry *ie);
-    void select_item_index(int idx, int qty, bool draw_cursor = true) override;
+    void select_item_index(int idx, int qty) override;
+    bool examine_index(int i) override;
     int pre_process(int key) override;
+    virtual bool skip_process_command(int keyin) override;
     virtual bool is_selectable(int index) const override;
     virtual string help_key() const override;
 
@@ -232,7 +200,9 @@ int prompt_invent_item(const char *prompt,
                        int type_expect,
                        operation_types oper = OPER_ANY,
                        invent_prompt_flags flags = invprompt_flag::none,
-                       const char other_valid_char = '\0');
+                       const char other_valid_char = '\0',
+                       const char *view_all_prompt = nullptr,
+                       int *type_out = nullptr);
 
 vector<SelItem> select_items(
                         const vector<const item_def*> &items,
@@ -263,8 +233,8 @@ bool prompt_failed(int retval);
 void list_charging_evokers(FixedVector<item_def*, NUM_MISCELLANY> &evokers);
 
 bool item_is_wieldable(const item_def &item);
-bool item_is_evokable(const item_def &item, bool msg = false);
 bool needs_notele_warning(const item_def &item, operation_types oper);
 bool needs_handle_warning(const item_def &item, operation_types oper,
                           bool &penance);
 item_def *digit_inscription_to_item(char digit, operation_types oper);
+operation_types generalize_oper(operation_types oper);

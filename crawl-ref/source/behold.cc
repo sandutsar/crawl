@@ -127,7 +127,7 @@ static void _removed_beholder_msg(const monster *mons)
 
     const monster &mon = *mons;
     if (!mon.alive() || !mons_is_siren_beholder(mon)
-        || mon.submerged() || !you.see_cell(mon.pos()))
+        || !you.see_cell(mon.pos()))
     {
         return;
     }
@@ -250,8 +250,8 @@ bool player::possible_beholder(const monster* mon) const
     if (crawl_state.game_is_arena())
         return false;
 
-    return mon && mon->alive() && !mon->submerged()
-        && cell_see_cell(pos(), mon->pos(), LOS_SOLID_SEE) && mon->see_cell_no_trans(pos())
+    return mon && mon->alive() && cell_see_cell(pos(), mon->pos(), LOS_SOLID_SEE)
+        && mon->see_cell_no_trans(pos())
         && !mon->wont_attack() && !mon->pacified()
         && ((mons_is_siren_beholder(mon->type)
              || mon->has_spell(SPELL_MESMERISE))
@@ -259,7 +259,7 @@ bool player::possible_beholder(const monster* mon) const
             && !mon->is_silenced()
             && !mon->confused()
             && !mon->asleep() && !mon->cannot_act()
-            && !mon->berserk_or_insane()
+            && !mon->berserk_or_frenzied()
             && !mons_is_fleeing(*mon)
             && !is_sanctuary(pos())
           || player_equip_unrand(UNRAND_DEMON_AXE));

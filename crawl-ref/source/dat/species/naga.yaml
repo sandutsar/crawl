@@ -10,17 +10,16 @@ aptitudes:
   xp: 0
   hp: 2
   mp_mod: 0
-  mr: 5
-  slings: -1
-  bows: -1
-  crossbows: -1
+  wl: 5
+  ranged weapons: -1
   throwing: -1
   armour: -2
   dodging: -2
   stealth: 5
-  shields: -2
+  shields: -1
   spellcasting: -1
-  poison_magic: 3
+  alchemy: 2
+  shapeshifting: -1
   invocations: 1
 size: large
 str: 10
@@ -39,16 +38,14 @@ mutations:
     MUT_CONSTRICTING_TAIL: 1
 recommended_jobs:
   - JOB_BERSERKER
-  - JOB_TRANSMUTER
+  - JOB_SHAPESHIFTER
   - JOB_ENCHANTER
   - JOB_FIRE_ELEMENTALIST
   - JOB_ICE_ELEMENTALIST
   - JOB_WARPER
-  - JOB_WIZARD
-  - JOB_VENOM_MAGE
-# start TAG_MAJOR_VERSION == 34
-create_enum: false
-# end TAG_MAJOR_VERSION
+  - JOB_HEDGE_WIZARD
+  - JOB_ALCHEMIST
 
 walking_verb: Slither
 altar_action: coil in front of
+orc_name: Nagorc

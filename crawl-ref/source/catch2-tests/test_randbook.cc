@@ -1,6 +1,6 @@
 #include <random>
 
-#include "catch.hpp"
+#include "catch_amalgamated.hpp"
 
 #include "AppHdr.h"
 
@@ -28,15 +28,13 @@ TEST_CASE( "When setting book spell list", "[single-file]" ) {
         init_spell_descs();
         vector<spell_type> spells = {
             SPELL_FREEZE,
-            SPELL_ANIMATE_SKELETON,
+            SPELL_NECROTISE,
             SPELL_APPORTATION,
             SPELL_SUMMON_SMALL_MAMMAL,
             SPELL_MAGIC_DART,
             SPELL_SHOCK,
             SPELL_SANDBLAST,
             SPELL_FOXFIRE,
-            SPELL_BEASTLY_APPENDAGE,
-            SPELL_PAIN,
             SPELL_STING,
         };
 

@@ -28,8 +28,7 @@ typedef vector<spellbook_contents> spellset;
 
 spellset item_spellset(const item_def &item);
 spellset monster_spellset(const monster_info &mi);
-vector<pair<spell_type,char>> map_chars_to_spells(const spellset &spells,
-                                       const item_def* const source_item);
+vector<pair<spell_type,char>> map_chars_to_spells(const spellset &spells);
 void describe_spellset(const spellset &spells,
                        const item_def* const source_item,
                        formatted_string &description,
@@ -38,3 +37,4 @@ void write_spellset(const spellset &spells,
                        const item_def* const source_item,
                        const monster_info *mon_owner = nullptr);
 string describe_item_spells(const item_def &item);
+string terse_spell_list(const item_def &item);
